@@ -1,6 +1,10 @@
-from impl.C3 import color_decoupling, show_images
+from impl.C3 import *
 
 if __name__ == "__main__":
     img_src = "assets/car.png"
-    r_img, g_img, b_img, recoupled_img = color_decoupling(img_src)
-    show_images((r_img, g_img, b_img, recoupled_img), titles=("Red Channel", "Green Channel", "Blue Channel", "Recoupled Image"))
+
+    # Exibe a janela com os canais YUV
+    display_yuv_tinted(img_src)
+    
+    # Quando você fechar a janela do YUV, ele abrirá a janela do HSV
+    display_hsv_tinted(img_src)
