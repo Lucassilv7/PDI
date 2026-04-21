@@ -245,3 +245,46 @@ def display_hsv_tinted(img_path: str):
     
     plt.tight_layout()
     plt.show()
+
+def pseudocolor_density_slicing(img_path: str) -> None:
+    # 1. Carrega a imagem original convertendo explicitamente para Tons de Cinza ('L')
+    img_gray = Image.open(img_path).convert("L")
+    gray_array = np.array(img_gray)
+
+    # 2. Cria uma "tela em branco" RGB com as mesmas dimensões da imagem original
+    altura, largura = gray_array.shape
+    pseudo_img = np.zeros((altura, largura, 3), dtype=np.uint8)
+
+    # 3. Definindo as Fatias (Condições) e as Cores
+
+    # FATIA 1: Escuro (0 a 60) -> Cor: (160, 57, 0) [Laranja escuro/Marrom]
+    mask_1 = (gray_array >= 0) & (gray_array <= 60)
+    pseudo_img[mask_1] = [160, 57, 0]
+
+    # FATIA 2: Tons médios baixos (61 a 120) -> Cor: (30, 144, 255) [Azul Dodger]
+    mask_2 = (gray_array >= 61) & (gray_array <= 120)
+    pseudo_img[mask_2] = [30, 144, 255]
+
+    # FATIA 3: Tons médios altos (121 a 180) -> Cor: (50, 205, 50) [Verde Limão]
+    mask_3 = (gray_array >= 121) & (gray_array <= 180)
+    pseudo_img[mask_3] = [50, 205, 50]
+
+    # FATIA 4: Claros (181 a 255) -> Cor: (220, 20, 60) [Vermelho Crimson]
+    mask_4 = (gray_array >= 181) & (gray_array <= 255)
+    pseudo_img[mask_4] = [220, 20, 60]
+
+    # 4. Plotagem
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    # Exibe a imagem em tons de cinza original
+    axes[0].imshow(gray_array, cmap='gray', vmin=0, vmax=255)
+    axes[0].set_title("Imagem Original (Tons de Cinza)", fontsize=14)
+    axes[0].axis('off')
+    
+    # Exibe a imagem pseudocolorida
+    axes[1].imshow(pseudo_img)
+    axes[1].set_title("Pseudocolorização (Fatiamento por Densidade)", fontsize=14)
+    axes[1].axis('off')
+    
+    plt.tight_layout()
+    plt.show()
