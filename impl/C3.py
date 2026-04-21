@@ -288,3 +288,33 @@ def pseudocolor_density_slicing(img_path: str) -> None:
     
     plt.tight_layout()
     plt.show()
+
+
+def color_redistribution(img_path: str):
+    # 1. Carrega a imagem RGB
+    img = Image.open(img_path).convert("RGB")
+    img_array = np.array(img)
+    
+    # 2. Extrai os canais originais
+    R_orig = img_array[:, :, 0]
+    G_orig = img_array[:, :, 1]
+    B_orig = img_array[:, :, 2]
+    
+    # 3. A Redistribuição (Falsa Cor)
+    
+    # O np.dstack empilha os planos 2D na ordem que você passar (Novo R, Novo G, Novo B)
+    img_falsa_cor = np.dstack((G_orig, B_orig, R_orig))
+    
+    # 4. Plotagem
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    
+    axes[0].imshow(img_array)
+    axes[0].set_title("Original (Composição RGB Real)", fontsize=14)
+    axes[0].axis('off')
+    
+    axes[1].imshow(img_falsa_cor)
+    axes[1].set_title("Redistribuição (Falsa Cor: G-B-R)", fontsize=14)
+    axes[1].axis('off')
+    
+    plt.tight_layout()
+    plt.show()
