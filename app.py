@@ -551,7 +551,7 @@ class PageC3(BasePage):
         # ── 3B Espaços de cor ──
         section_title(p, "3B — Espaços de Cor")
         space_frm = tk.Frame(p, bg=BG_PANEL); space_frm.pack(padx=20,pady=4,anchor="w")
-        self._space = make_combobox(space_frm, ["CMYK","YUV","HSV"], width=10)
+        self._space = make_combobox(space_frm, ["CMY", "CMYK", "YUV", "HSV"], width=10)
         self._space.grid(row=0,column=0,padx=(0,10))
         make_button(space_frm, "Mostrar canais", self._run_space).grid(row=0,column=1)
         self._space_frm = tk.Frame(p, bg=BG_PANEL)
@@ -604,7 +604,10 @@ class PageC3(BasePage):
         if not self._check(): return
         space = self._space.get()
         try:
-            if space == "CMYK":
+            if space == "CMY":
+                imgs = C3.get_cmy_tinted(self._img)
+                titles = ["Ciano (C)","Magenta (M)","Amarelo (Y)"]
+            elif space == "CMYK":
                 imgs = C3.get_cmyk_tinted_images(self._img)
                 titles = ["Ciano (C)","Magenta (M)","Amarelo (Y)","Preto (K)"]
             elif space == "YUV":

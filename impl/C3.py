@@ -30,6 +30,22 @@ def decouple_rgb(img_array: np.ndarray) -> tuple:
 # 2. CONVERSÕES MATEMÁTICAS BASE (Implementação 3B)
 # =====================================================================
 
+def rgb_to_cmy(img_array: np.ndarray) -> tuple:
+    """ Função matemática pura: Converte RGB para CMY """
+    # Normaliza a imagem para 0.0 - 1.0
+    rgb_norm = img_array.astype(np.float64) / 255.0
+
+    R = rgb_norm[:, :, 0]
+    G = rgb_norm[:, :, 1]
+    B = rgb_norm[:, :, 2]
+
+    # Inverso aditivo (Fórmula do CMY)
+    C = 1.0 - R
+    M = 1.0 - G
+    Y = 1.0 - B
+
+    return C, M, Y
+
 def rgb_to_cmyk(img_array: np.ndarray) -> tuple:
     rgb_norm = img_array.astype(np.float64) / 255.0
     R, G, B = rgb_norm[:, :, 0], rgb_norm[:, :, 1], rgb_norm[:, :, 2]
@@ -93,6 +109,30 @@ def rgb_to_hsv(img_array: np.ndarray) -> tuple:
 # =====================================================================
 # 3. GERADORES DE IMAGENS TINTADAS (Para Exibição Visual)
 # =====================================================================
+
+def get_cmy_tinted(img_array: np.ndarray) -> tuple:
+    """ Retorna as matrizes colorizadas do CMY prontas para o Tkinter """
+    C, M, Y = rgb_to_cmy(img_array)
+    altura, largura = C.shape
+    
+    # Simula o Ciano (Absorve o Red)
+    cyan_img = np.ones((altura, largura, 3))
+    cyan_img[:, :, 0] = 1.0 - C 
+    
+    # Simula o Magenta (Absorve o Green)
+    magenta_img = np.ones((altura, largura, 3))
+    magenta_img[:, :, 1] = 1.0 - M 
+    
+    # Simula o Amarelo (Absorve o Blue)
+    yellow_img = np.ones((altura, largura, 3))
+    yellow_img[:, :, 2] = 1.0 - Y
+
+    # Converte de volta para a escala 0-255 (formato de imagem)
+    c_uint8 = (cyan_img * 255).astype(np.uint8)
+    m_uint8 = (magenta_img * 255).astype(np.uint8)
+    y_uint8 = (yellow_img * 255).astype(np.uint8)
+
+    return c_uint8, m_uint8, y_uint8
 
 def get_cmyk_tinted_images(img_array: np.ndarray) -> tuple:
     C, M, Y, K = rgb_to_cmyk(img_array)
