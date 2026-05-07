@@ -149,6 +149,8 @@ def transformacao_quadrado(img_array: np.ndarray) -> np.ndarray:
     g = c * (f ** 2)
     return np.clip(g, 0, 255).astype(np.uint8)
 
+###########################################################################################
+
 def equalizar_histograma(img_array: np.ndarray) -> np.ndarray:
     """
     Realça o contraste da imagem distribuindo uniformemente as intensidades dos pixels.
@@ -177,3 +179,20 @@ def equalizar_histograma(img_array: np.ndarray) -> np.ndarray:
     img_equalizada = cdf_final[img_array]
     
     return img_equalizada
+
+def correcao_gama(img_array: np.ndarray, gama: float) -> np.ndarray:
+    """
+    Implementação 3: Ajuste de brilho pela Correção Gama.
+    Fórmula: g = c * (f ^ gama)
+    """
+    # 1. Normaliza para o intervalo [0.0, 1.0] para garantir estabilidade matemática
+    # Qualquer número entre 0 e 1 elevado a uma potência continua entre 0 e 1!
+    f_norm = img_array.astype(np.float64) / 255.0
+    
+    # 2. Aplica a potência gama (o c nesse caso vira 1, pois f_max = 1.0)
+    g_norm = np.power(f_norm, gama)
+    
+    # 3. Desnormaliza de volta para o espectro de 8 bits [0, 255]
+    g = g_norm * 255.0
+    
+    return np.clip(g, 0, 255).astype(np.uint8)
