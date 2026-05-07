@@ -652,34 +652,44 @@ class AbaRealce(BasePage):
         self._sel = ImageSelector(p, "Imagem", on_load=self._on_img_load)
         self._sel.pack(**pad, fill="x")
 
-        # ── 2A Transformações Lineares ──
-        section_title(p, "2A — Transformações Lineares")
-        
-        # Frame para os controles da 2A
+        # ── 2A Transformação Linear (Intervalo) ──
+        section_title(p, "2A — Mapeamento de Intervalo Linear")
         lin_ctrl = tk.Frame(p, bg=BG_PANEL)
         lin_ctrl.pack(**pad)
         
-        # Intervalo
         tk.Label(lin_ctrl, text="[f_min, f_max] -> [g_min, g_max]:", bg=BG_PANEL, fg="white").grid(row=0, column=0, columnspan=4, sticky="w")
         self._ent_fmin = tk.Entry(lin_ctrl, width=5); self._ent_fmin.insert(0, "0"); self._ent_fmin.grid(row=1, column=0, padx=2)
         self._ent_fmax = tk.Entry(lin_ctrl, width=5); self._ent_fmax.insert(0, "150"); self._ent_fmax.grid(row=1, column=1, padx=(2, 10))
         self._ent_gmin = tk.Entry(lin_ctrl, width=5); self._ent_gmin.insert(0, "0"); self._ent_gmin.grid(row=1, column=2, padx=2)
         self._ent_gmax = tk.Entry(lin_ctrl, width=5); self._ent_gmax.insert(0, "255"); self._ent_gmax.grid(row=1, column=3, padx=(2, 10))
         make_button(lin_ctrl, "Aplicar Intervalo", self._run_intervalo).grid(row=1, column=4, padx=5)
-
-        # Inversa e Binária
-        make_button(lin_ctrl, "Inversa (Negativo)", self._run_inversa).grid(row=2, column=0, columnspan=2, pady=10, sticky="w")
         
-        tk.Label(lin_ctrl, text="Limiar (T):", bg=BG_PANEL, fg="white").grid(row=2, column=2, sticky="e")
-        self._ent_limiar = tk.Entry(lin_ctrl, width=5); self._ent_limiar.insert(0, "127"); self._ent_limiar.grid(row=2, column=3, padx=2)
-        make_button(lin_ctrl, "Aplicar Binária", self._run_binaria).grid(row=2, column=4, padx=5)
-        
-        # Frame de Resultados 2A
-        self._lin_frm = tk.Frame(p, bg=BG_PANEL)
-        self._lin_frm.pack(padx=20, pady=4)
+        self._lin_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._lin_res_frm.pack(padx=20, pady=4)
 
-        # ── 2B Transformações Não Lineares ──
-        section_title(p, "2B — Transformações Não Lineares")
+        # ── 2B Inversa (Negativo) ──
+        section_title(p, "2B — Transformação Inversa (Negativo)")
+        inv_ctrl = tk.Frame(p, bg=BG_PANEL)
+        inv_ctrl.pack(**pad)
+        make_button(inv_ctrl, "Gerar Negativo", self._run_inversa).pack(side="left")
+        
+        self._inv_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._inv_res_frm.pack(padx=20, pady=4)
+
+        # ── 2C Binária (Limiarização) ──
+        section_title(p, "2C — Transformação Binária (Threshold)")
+        bin_ctrl = tk.Frame(p, bg=BG_PANEL)
+        bin_ctrl.pack(**pad)
+        
+        tk.Label(bin_ctrl, text="Limiar (T):", bg=BG_PANEL, fg="white").pack(side="left")
+        self._ent_limiar = tk.Entry(bin_ctrl, width=5); self._ent_limiar.insert(0, "127"); self._ent_limiar.pack(side="left", padx=5)
+        make_button(bin_ctrl, "Aplicar Limiar", self._run_binaria).pack(side="left", padx=5)
+        
+        self._bin_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._bin_res_frm.pack(padx=20, pady=4)
+
+        # ── 2D Transformações Não Lineares ──
+        section_title(p, "2D — Transformações Não Lineares")
         nl_ctrl = tk.Frame(p, bg=BG_PANEL)
         nl_ctrl.pack(**pad)
         
@@ -687,73 +697,59 @@ class AbaRealce(BasePage):
         self._cb_nao_linear.grid(row=0, column=0, padx=(0, 10))
         make_button(nl_ctrl, "Aplicar Curva", self._run_nao_linear).grid(row=0, column=1)
         
-        # Frame de Resultados 2B
-        self._nl_frm = tk.Frame(p, bg=BG_PANEL)
-        self._nl_frm.pack(padx=20, pady=4)
+        self._nl_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._nl_res_frm.pack(padx=20, pady=4)
 
-        # ── 2C Equalização de Histograma e Gama ──
-        section_title(p, "2C — Correção Gama e Equalização")
+        # ── 2E Equalização e Gama ──
+        section_title(p, "2E — Correção Gama e Equalização")
         gam_ctrl = tk.Frame(p, bg=BG_PANEL)
         gam_ctrl.pack(**pad)
         
         tk.Label(gam_ctrl, text="Gama (y):", bg=BG_PANEL, fg="white").grid(row=0, column=0)
         self._ent_gama = tk.Entry(gam_ctrl, width=5); self._ent_gama.insert(0, "1.0"); self._ent_gama.grid(row=0, column=1, padx=5)
         make_button(gam_ctrl, "Aplicar Gama", self._run_gama).grid(row=0, column=2, padx=(0, 20))
-        
         make_button(gam_ctrl, "Equalizar Histograma", self._run_equalizacao).grid(row=0, column=3)
         
-        # Frame de Resultados 2C
-        self._gam_frm = tk.Frame(p, bg=BG_PANEL)
-        self._gam_frm.pack(padx=20, pady=4)
+        self._gam_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._gam_res_frm.pack(padx=20, pady=4)
 
-        # ── 2D Fatiamento de Bits ──
-        section_title(p, "2D — Fatiamento de Planos de Bits")
+        # ── 2F Fatiamento de Bits ──
+        section_title(p, "2F — Fatiamento de Planos de Bits")
         make_button(p, "Extrair 8 Planos de Bits", self._run_fatiamento).pack(**pad)
         
-        # Frame de Resultados 2D
-        self._bit_frm = tk.Frame(p, bg=BG_PANEL)
-        self._bit_frm.pack(padx=20, pady=4)
+        self._bit_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._bit_res_frm.pack(padx=20, pady=4)
 
     # =========================================================================
-    # Eventos de UI e Validações
+    # Helpers e Validações
     # =========================================================================
 
     def _on_img_load(self, arr, _path):
         self._img = arr
-        # Limpar todos os frames de resultado ao carregar nova imagem
-        for frm in [self._lin_frm, self._nl_frm, self._gam_frm, self._bit_frm]:
-            for w in frm.winfo_children():
-                w.destroy()
-
-    def _check(self):
-        if self._img is None:
-            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
-            return False
-        return True
+        # Limpar absolutamente todos os frames de resultado
+        frms = [self._lin_res_frm, self._inv_res_frm, self._bin_res_frm, 
+                self._nl_res_frm, self._gam_res_frm, self._bit_res_frm]
+        for frm in frms:
+            for w in frm.winfo_children(): w.destroy()
 
     def _get_gray_img(self):
-        """Converte para tons de cinza de forma segura (necessário para o Realce)"""
-        if not self._check(): return None
-        # Se a imagem tiver 3 canais (RGB), converte para L
+        if self._img is None:
+            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
+            return None
         if len(self._img.shape) == 3:
             return np.array(Image.fromarray(self._img).convert("L"))
         return self._img
 
     def _show_grid(self, parent, arrays_titles, cols=4, max_w=230, max_h=200):
-        """Exibe os image_cards em formato de grade (útil para os 8 bits)."""
-        for widget in parent.winfo_children():
-            widget.destroy()
-        
+        for widget in parent.winfo_children(): widget.destroy()
         for i, (arr, title) in enumerate(arrays_titles):
             frm, lbl_img, lbl_info = image_card(parent, title)
-            # A matemática do grid para pular de linha
-            row = i // cols
-            col = i % cols
+            row, col = i // cols, i % cols
             frm.grid(row=row, column=col, padx=5, pady=4, sticky="n")
             show_array_in_label(arr, lbl_img, lbl_info, max_w, max_h)
 
     # =========================================================================
-    # Callbacks das Funções de PDI
+    # Callbacks
     # =========================================================================
 
     def _run_intervalo(self):
@@ -763,15 +759,14 @@ class AbaRealce(BasePage):
             fmin, fmax = int(self._ent_fmin.get()), int(self._ent_fmax.get())
             gmin, gmax = int(self._ent_gmin.get()), int(self._ent_gmax.get())
             res = realce.transformacao_linear_intervalo(arr, fmin, fmax, gmin, gmax)
-            self._show_grid(self._lin_frm, [(arr, "Original (L)"), (res, "Intervalo Aplicado")])
-        except Exception as e:
-            messagebox.showerror("Erro", f"Entrada inválida: {e}")
+            self._show_grid(self._lin_res_frm, [(arr, "Original"), (res, "Intervalo")])
+        except Exception as e: messagebox.showerror("Erro", str(e))
 
     def _run_inversa(self):
         arr = self._get_gray_img()
         if arr is None: return
         res = realce.transformacao_inversa(arr)
-        self._show_grid(self._lin_frm, [(arr, "Original (L)"), (res, "Inversa (Negativo)")])
+        self._show_grid(self._inv_res_frm, [(arr, "Original"), (res, "Negativo")])
 
     def _run_binaria(self):
         arr = self._get_gray_img()
@@ -779,28 +774,21 @@ class AbaRealce(BasePage):
         try:
             t = int(self._ent_limiar.get())
             res = realce.transformacao_binaria(arr, t)
-            self._show_grid(self._lin_frm, [(arr, "Original (L)"), (res, f"Binária (T={t})")])
-        except Exception as e:
-            messagebox.showerror("Erro", str(e))
+            self._show_grid(self._bin_res_frm, [(arr, "Original"), (res, f"Binária T={t}")])
+        except Exception as e: messagebox.showerror("Erro", str(e))
 
     def _run_nao_linear(self):
         arr = self._get_gray_img()
         if arr is None: return
         curva = self._cb_nao_linear.get()
-        
-        try:
-            if curva == "Logarítmica":
-                res = realce.transformacao_logaritmica(arr)
-            elif curva == "Raiz Quadrada":
-                res = realce.transformacao_raiz(arr)
-            elif curva == "Exponencial":
-                res = realce.transformacao_exponencial(arr)
-            else: # Quadrado
-                res = realce.transformacao_quadrado(arr)
-                
-            self._show_grid(self._nl_frm, [(arr, "Original (L)"), (res, f"{curva}")])
-        except Exception as e:
-            messagebox.showerror("Erro", str(e))
+        mapping = {
+            "Logarítmica": realce.transformacao_logaritmica,
+            "Raiz Quadrada": realce.transformacao_raiz,
+            "Exponencial": realce.transformacao_exponencial,
+            "Quadrado": realce.transformacao_quadrado
+        }
+        res = mapping[curva](arr)
+        self._show_grid(self._nl_res_frm, [(arr, "Original"), (res, curva)])
 
     def _run_gama(self):
         arr = self._get_gray_img()
@@ -808,35 +796,22 @@ class AbaRealce(BasePage):
         try:
             g = float(self._ent_gama.get())
             res = realce.correcao_gama(arr, g)
-            self._show_grid(self._gam_frm, [(arr, "Original (L)"), (res, f"Correção Gama (y={g})")])
-        except Exception as e:
-            messagebox.showerror("Erro", str(e))
+            self._show_grid(self._gam_res_frm, [(arr, "Original"), (res, f"Gama {g}")])
+        except Exception as e: messagebox.showerror("Erro", str(e))
 
     def _run_equalizacao(self):
         arr = self._get_gray_img()
         if arr is None: return
-        try:
-            res = realce.equalizar_histograma(arr)
-            self._show_grid(self._gam_frm, [(arr, "Original (L)"), (res, "Histograma Equalizado")])
-        except Exception as e:
-            messagebox.showerror("Erro", str(e))
+        res = realce.equalizar_histograma(arr)
+        self._show_grid(self._gam_res_frm, [(arr, "Original"), (res, "Equalizada")])
 
     def _run_fatiamento(self):
         arr = self._get_gray_img()
         if arr is None: return
-        try:
-            planos = realce.fatiamento_planos_bits(arr)
-            # Inverte para mostrar do 7 (MSB) ao 0 (LSB)
-            planos.reverse()
-            titulos = [f"Plano {i}" for i in range(7, -1, -1)]
-            
-            # Aqui fazemos um zip, mantendo as 8 imagens e seus títulos
-            arrays_titles = list(zip(planos, titulos))
-            
-            # O cols=4 no show_grid vai garantir que as 8 imagens formem duas linhas (4x2)!
-            self._show_grid(self._bit_frm, arrays_titles, cols=4, max_w=150, max_h=150)
-        except Exception as e:
-            messagebox.showerror("Erro", str(e))
+        planos = realce.fatiamento_planos_bits(arr)
+        planos.reverse()
+        titles = [f"Bit {i}" for i in range(7, -1, -1)]
+        self._show_grid(self._bit_res_frm, list(zip(planos, titles)), cols=4, max_w=150, max_h=150)
 
 
 # ─────────────────────────────────────────────
