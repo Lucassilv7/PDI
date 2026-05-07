@@ -657,12 +657,40 @@ class AbaRealce(BasePage):
         lin_ctrl = tk.Frame(p, bg=BG_PANEL)
         lin_ctrl.pack(**pad)
         
-        tk.Label(lin_ctrl, text="[f_min, f_max] -> [g_min, g_max]:", bg=BG_PANEL, fg="white").grid(row=0, column=0, columnspan=4, sticky="w")
-        self._ent_fmin = tk.Entry(lin_ctrl, width=5); self._ent_fmin.insert(0, "0"); self._ent_fmin.grid(row=1, column=0, padx=2)
-        self._ent_fmax = tk.Entry(lin_ctrl, width=5); self._ent_fmax.insert(0, "150"); self._ent_fmax.grid(row=1, column=1, padx=(2, 10))
-        self._ent_gmin = tk.Entry(lin_ctrl, width=5); self._ent_gmin.insert(0, "0"); self._ent_gmin.grid(row=1, column=2, padx=2)
-        self._ent_gmax = tk.Entry(lin_ctrl, width=5); self._ent_gmax.insert(0, "255"); self._ent_gmax.grid(row=1, column=3, padx=(2, 10))
-        make_button(lin_ctrl, "Aplicar Intervalo", self._run_intervalo).grid(row=1, column=4, padx=5)
+        # Frame para agrupar os limites de entrada (f)
+        frm_f = tk.Frame(lin_ctrl, bg=BG_PANEL)
+        frm_f.grid(row=0, column=0, padx=(0, 20))
+        
+        # O parâmetro 'command=self._run_intervalo' faz a imagem atualizar em tempo real!
+        self._scale_fmin = tk.Scale(frm_f, from_=0, to=254, orient="horizontal", label="f_min", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
+                                    command=self._run_intervalo)
+        self._scale_fmin.set(0)
+        self._scale_fmin.pack(side="left", padx=5)
+        
+        self._scale_fmax = tk.Scale(frm_f, from_=1, to=255, orient="horizontal", label="f_max", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
+                                    command=self._run_intervalo)
+        self._scale_fmax.set(150)
+        self._scale_fmax.pack(side="left", padx=5)
+
+        # Frame para agrupar os limites de saída (g)
+        frm_g = tk.Frame(lin_ctrl, bg=BG_PANEL)
+        frm_g.grid(row=0, column=1, padx=(0, 20))
+        
+        self._scale_gmin = tk.Scale(frm_g, from_=0, to=255, orient="horizontal", label="g_min", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
+                                    command=self._run_intervalo)
+        self._scale_gmin.set(0)
+        self._scale_gmin.pack(side="left", padx=5)
+        
+        self._scale_gmax = tk.Scale(frm_g, from_=0, to=255, orient="horizontal", label="g_max", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
+                                    command=self._run_intervalo)
+        self._scale_gmax.set(255)
+        self._scale_gmax.pack(side="left", padx=5)
+
+        make_button(lin_ctrl, "Resetar", self._resetar_intervalo).grid(row=0, column=2)
         
         self._lin_res_frm = tk.Frame(p, bg=BG_PANEL)
         self._lin_res_frm.pack(padx=20, pady=4)
@@ -752,15 +780,40 @@ class AbaRealce(BasePage):
     # Callbacks
     # =========================================================================
 
-    def _run_intervalo(self):
+    def _run_intervalo(self, *args):
         arr = self._get_gray_img()
         if arr is None: return
+        
+        # Lê os valores direto dos sliders (já vêm como inteiros)
+        fmin = self._scale_fmin.get()
+        fmax = self._scale_fmax.get()
+        gmin = self._scale_gmin.get()
+        gmax = self._scale_gmax.get()
+        
+        # Trava de segurança: impede que f_min e f_max sejam idênticos (divisão por zero)
+        if fmin == fmax:
+            if fmax < 255: 
+                fmax += 1
+                self._scale_fmax.set(fmax)
+            else: 
+                fmin -= 1
+                self._scale_fmin.set(fmin)
+
         try:
-            fmin, fmax = int(self._ent_fmin.get()), int(self._ent_fmax.get())
-            gmin, gmax = int(self._ent_gmin.get()), int(self._ent_gmax.get())
             res = realce.transformacao_linear_intervalo(arr, fmin, fmax, gmin, gmax)
-            self._show_grid(self._lin_res_frm, [(arr, "Original"), (res, "Intervalo")])
-        except Exception as e: messagebox.showerror("Erro", str(e))
+            # Mostra o intervalo escolhido no título dinamicamente
+            titulo = f"Intervalo: [{fmin}, {fmax}] → [{gmin}, {gmax}]"
+            self._show_grid(self._lin_res_frm, [(arr, "Original"), (res, titulo)])
+        except Exception as e: 
+            messagebox.showerror("Erro", str(e))
+
+    def _resetar_intervalo(self):
+        """Volta os sliders para o padrão sem estourar o layout"""
+        self._scale_fmin.set(0)
+        self._scale_fmax.set(255)
+        self._scale_gmin.set(0)
+        self._scale_gmax.set(255)
+        # O set() do slider já vai chamar o _run_intervalo automaticamente!
 
     def _run_inversa(self):
         arr = self._get_gray_img()
