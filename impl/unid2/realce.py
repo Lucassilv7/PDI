@@ -29,3 +29,19 @@ def transformacao_linear_intervalo(img_array: np.ndarray, f_min: int, f_max: int
     g_final = g_clip.astype(np.uint8)
     
     return g_final
+
+def transformacao_linear_por_partes(img_array: np.ndarray, pontos_f: list, pontos_g: list) -> np.ndarray:
+    """
+    Implementação B: Transformação Linear por Partes.
+    
+    pontos_f: Lista com os limites dos intervalos de entrada (Eixo X). Ex: [0, 100, 200, 255]
+    pontos_g: Lista com os limites dos intervalos de saída (Eixo Y). Ex: [0, 50,  220, 255]
+    """
+    # A função np.interp aplica exatamente a fórmula da Letra A
+    # mas cria as retas conectando os pontos que definimos!
+    g = np.interp(img_array, pontos_f, pontos_g)
+    
+    # O clip aqui é só por segurança, caso os pontos_g passem de 255
+    g_clip = np.clip(g, 0, 255)
+    
+    return g_clip.astype(np.uint8)
