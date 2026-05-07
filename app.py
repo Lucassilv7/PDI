@@ -657,41 +657,54 @@ class AbaRealce(BasePage):
         lin_ctrl = tk.Frame(p, bg=BG_PANEL)
         lin_ctrl.pack(**pad)
         
-        # Frame para agrupar os limites de entrada (f)
+        # Variável para controlar o estado do tempo real (Nasce como Falso)
+        self._auto_update = tk.BooleanVar(value=False)
+
+        # -- Frame de Entradas (f) --
         frm_f = tk.Frame(lin_ctrl, bg=BG_PANEL)
-        frm_f.grid(row=0, column=0, padx=(0, 20))
+        frm_f.grid(row=0, column=0, padx=(0, 10))
         
-        # O parâmetro 'command=self._run_intervalo' faz a imagem atualizar em tempo real!
         self._scale_fmin = tk.Scale(frm_f, from_=0, to=254, orient="horizontal", label="f_min", 
-                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
-                                    command=self._run_intervalo)
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
         self._scale_fmin.set(0)
-        self._scale_fmin.pack(side="left", padx=5)
+        self._scale_fmin.pack(side="left")
         
         self._scale_fmax = tk.Scale(frm_f, from_=1, to=255, orient="horizontal", label="f_max", 
-                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
-                                    command=self._run_intervalo)
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
         self._scale_fmax.set(150)
-        self._scale_fmax.pack(side="left", padx=5)
+        self._scale_fmax.pack(side="left")
 
-        # Frame para agrupar os limites de saída (g)
+        # -- Frame de Saídas (g) --
         frm_g = tk.Frame(lin_ctrl, bg=BG_PANEL)
-        frm_g.grid(row=0, column=1, padx=(0, 20))
+        frm_g.grid(row=0, column=1, padx=(0, 10))
         
         self._scale_gmin = tk.Scale(frm_g, from_=0, to=255, orient="horizontal", label="g_min", 
-                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
-                                    command=self._run_intervalo)
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
         self._scale_gmin.set(0)
-        self._scale_gmin.pack(side="left", padx=5)
+        self._scale_gmin.pack(side="left")
         
         self._scale_gmax = tk.Scale(frm_g, from_=0, to=255, orient="horizontal", label="g_max", 
-                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=130,
-                                    command=self._run_intervalo)
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
         self._scale_gmax.set(255)
-        self._scale_gmax.pack(side="left", padx=5)
+        self._scale_gmax.pack(side="left")
 
-        make_button(lin_ctrl, "Resetar", self._resetar_intervalo).grid(row=0, column=2)
+        # -- Frame de Controles (Aplicar, Resetar, Auto-Update) --
+        frm_btn = tk.Frame(lin_ctrl, bg=BG_PANEL)
+        frm_btn.grid(row=0, column=2, sticky="s", pady=15)
         
+        make_button(frm_btn, "Aplicar", self._run_intervalo).pack(fill="x", pady=2)
+        make_button(frm_btn, "Resetar", self._resetar_intervalo).pack(fill="x", pady=2)
+        
+        # O checkbox que controla o auto-update
+        chk_auto = tk.Checkbutton(frm_btn, text="Tempo real", variable=self._auto_update, 
+                                  bg=BG_PANEL, fg="white", selectcolor=BG_DARK, 
+                                  activebackground=BG_PANEL, activeforeground="white")
+        chk_auto.pack(anchor="w")
+
         self._lin_res_frm = tk.Frame(p, bg=BG_PANEL)
         self._lin_res_frm.pack(padx=20, pady=4)
 
@@ -806,6 +819,12 @@ class AbaRealce(BasePage):
             self._show_grid(self._lin_res_frm, [(arr, "Original"), (res, titulo)])
         except Exception as e: 
             messagebox.showerror("Erro", str(e))
+    
+    def _on_slider_change(self, *args):
+        """Callback disparado toda vez que um slider move um milímetro."""
+        # Só executa automaticamente se a caixinha estiver marcada E a imagem existir
+        if self._auto_update.get() and self._img is not None:
+            self._run_intervalo()
 
     def _resetar_intervalo(self):
         """Volta os sliders para o padrão sem estourar o layout"""
