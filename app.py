@@ -11,6 +11,7 @@ from PIL import Image, ImageTk
 import os
 
 from impl import C1, C2, C3
+from impl.unid2 import realce
 
 # ─────────────────────────────────────────────
 #  PALETA E FONTES
@@ -22,6 +23,7 @@ BG_INPUT  = "#1c2128"
 ACCENT    = "#58a6ff"
 ACCENT2   = "#3fb950"
 ACCENT3   = "#f78166"
+ACCENT4   = "#d73a49"
 TEXT_PRI  = "#e6edf3"
 TEXT_SEC  = "#8b949e"
 TEXT_DIM  = "#484f58"
@@ -633,6 +635,210 @@ class PageC3(BasePage):
                        [(self._img,"Original"),(falsa,"Falsa Cor (G→R, B→G, R→B)")])
 
 
+class AbaRealce(BasePage):
+    """
+    Aba dedicada à Unidade 2: Realce de Imagens (C2)
+    """
+    def __init__(self, parent, **kw):
+        super().__init__(parent, **kw)
+        inner = self.scrollable()
+        self._img = None
+        self._build(inner)
+
+    def _build(self, p):
+        pad = dict(padx=20, pady=4, anchor="w")
+        section_title(p, "Conjunto 2 — Realce de Imagens (Domínio Espacial)")
+
+        self._sel = ImageSelector(p, "Imagem", on_load=self._on_img_load)
+        self._sel.pack(**pad, fill="x")
+
+        # ── 2A Transformações Lineares ──
+        section_title(p, "2A — Transformações Lineares")
+        
+        # Frame para os controles da 2A
+        lin_ctrl = tk.Frame(p, bg=BG_PANEL)
+        lin_ctrl.pack(**pad)
+        
+        # Intervalo
+        tk.Label(lin_ctrl, text="[f_min, f_max] -> [g_min, g_max]:", bg=BG_PANEL, fg="white").grid(row=0, column=0, columnspan=4, sticky="w")
+        self._ent_fmin = tk.Entry(lin_ctrl, width=5); self._ent_fmin.insert(0, "0"); self._ent_fmin.grid(row=1, column=0, padx=2)
+        self._ent_fmax = tk.Entry(lin_ctrl, width=5); self._ent_fmax.insert(0, "150"); self._ent_fmax.grid(row=1, column=1, padx=(2, 10))
+        self._ent_gmin = tk.Entry(lin_ctrl, width=5); self._ent_gmin.insert(0, "0"); self._ent_gmin.grid(row=1, column=2, padx=2)
+        self._ent_gmax = tk.Entry(lin_ctrl, width=5); self._ent_gmax.insert(0, "255"); self._ent_gmax.grid(row=1, column=3, padx=(2, 10))
+        make_button(lin_ctrl, "Aplicar Intervalo", self._run_intervalo).grid(row=1, column=4, padx=5)
+
+        # Inversa e Binária
+        make_button(lin_ctrl, "Inversa (Negativo)", self._run_inversa).grid(row=2, column=0, columnspan=2, pady=10, sticky="w")
+        
+        tk.Label(lin_ctrl, text="Limiar (T):", bg=BG_PANEL, fg="white").grid(row=2, column=2, sticky="e")
+        self._ent_limiar = tk.Entry(lin_ctrl, width=5); self._ent_limiar.insert(0, "127"); self._ent_limiar.grid(row=2, column=3, padx=2)
+        make_button(lin_ctrl, "Aplicar Binária", self._run_binaria).grid(row=2, column=4, padx=5)
+        
+        # Frame de Resultados 2A
+        self._lin_frm = tk.Frame(p, bg=BG_PANEL)
+        self._lin_frm.pack(padx=20, pady=4)
+
+        # ── 2B Transformações Não Lineares ──
+        section_title(p, "2B — Transformações Não Lineares")
+        nl_ctrl = tk.Frame(p, bg=BG_PANEL)
+        nl_ctrl.pack(**pad)
+        
+        self._cb_nao_linear = make_combobox(nl_ctrl, ["Logarítmica", "Raiz Quadrada", "Exponencial", "Quadrado"], width=15)
+        self._cb_nao_linear.grid(row=0, column=0, padx=(0, 10))
+        make_button(nl_ctrl, "Aplicar Curva", self._run_nao_linear).grid(row=0, column=1)
+        
+        # Frame de Resultados 2B
+        self._nl_frm = tk.Frame(p, bg=BG_PANEL)
+        self._nl_frm.pack(padx=20, pady=4)
+
+        # ── 2C Equalização de Histograma e Gama ──
+        section_title(p, "2C — Correção Gama e Equalização")
+        gam_ctrl = tk.Frame(p, bg=BG_PANEL)
+        gam_ctrl.pack(**pad)
+        
+        tk.Label(gam_ctrl, text="Gama (y):", bg=BG_PANEL, fg="white").grid(row=0, column=0)
+        self._ent_gama = tk.Entry(gam_ctrl, width=5); self._ent_gama.insert(0, "1.0"); self._ent_gama.grid(row=0, column=1, padx=5)
+        make_button(gam_ctrl, "Aplicar Gama", self._run_gama).grid(row=0, column=2, padx=(0, 20))
+        
+        make_button(gam_ctrl, "Equalizar Histograma", self._run_equalizacao).grid(row=0, column=3)
+        
+        # Frame de Resultados 2C
+        self._gam_frm = tk.Frame(p, bg=BG_PANEL)
+        self._gam_frm.pack(padx=20, pady=4)
+
+        # ── 2D Fatiamento de Bits ──
+        section_title(p, "2D — Fatiamento de Planos de Bits")
+        make_button(p, "Extrair 8 Planos de Bits", self._run_fatiamento).pack(**pad)
+        
+        # Frame de Resultados 2D
+        self._bit_frm = tk.Frame(p, bg=BG_PANEL)
+        self._bit_frm.pack(padx=20, pady=4)
+
+    # =========================================================================
+    # Eventos de UI e Validações
+    # =========================================================================
+
+    def _on_img_load(self, arr, _path):
+        self._img = arr
+        # Limpar todos os frames de resultado ao carregar nova imagem
+        for frm in [self._lin_frm, self._nl_frm, self._gam_frm, self._bit_frm]:
+            for w in frm.winfo_children():
+                w.destroy()
+
+    def _check(self):
+        if self._img is None:
+            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
+            return False
+        return True
+
+    def _get_gray_img(self):
+        """Converte para tons de cinza de forma segura (necessário para o Realce)"""
+        if not self._check(): return None
+        # Se a imagem tiver 3 canais (RGB), converte para L
+        if len(self._img.shape) == 3:
+            return np.array(Image.fromarray(self._img).convert("L"))
+        return self._img
+
+    def _show_grid(self, parent, arrays_titles, cols=4, max_w=230, max_h=200):
+        """Exibe os image_cards em formato de grade (útil para os 8 bits)."""
+        for widget in parent.winfo_children():
+            widget.destroy()
+        
+        for i, (arr, title) in enumerate(arrays_titles):
+            frm, lbl_img, lbl_info = image_card(parent, title)
+            # A matemática do grid para pular de linha
+            row = i // cols
+            col = i % cols
+            frm.grid(row=row, column=col, padx=5, pady=4, sticky="n")
+            show_array_in_label(arr, lbl_img, lbl_info, max_w, max_h)
+
+    # =========================================================================
+    # Callbacks das Funções de PDI
+    # =========================================================================
+
+    def _run_intervalo(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        try:
+            fmin, fmax = int(self._ent_fmin.get()), int(self._ent_fmax.get())
+            gmin, gmax = int(self._ent_gmin.get()), int(self._ent_gmax.get())
+            res = realce.transformacao_linear_intervalo(arr, fmin, fmax, gmin, gmax)
+            self._show_grid(self._lin_frm, [(arr, "Original (L)"), (res, "Intervalo Aplicado")])
+        except Exception as e:
+            messagebox.showerror("Erro", f"Entrada inválida: {e}")
+
+    def _run_inversa(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        res = realce.transformacao_inversa(arr)
+        self._show_grid(self._lin_frm, [(arr, "Original (L)"), (res, "Inversa (Negativo)")])
+
+    def _run_binaria(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        try:
+            t = int(self._ent_limiar.get())
+            res = realce.transformacao_binaria(arr, t)
+            self._show_grid(self._lin_frm, [(arr, "Original (L)"), (res, f"Binária (T={t})")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_nao_linear(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        curva = self._cb_nao_linear.get()
+        
+        try:
+            if curva == "Logarítmica":
+                res = realce.transformacao_logaritmica(arr)
+            elif curva == "Raiz Quadrada":
+                res = realce.transformacao_raiz(arr)
+            elif curva == "Exponencial":
+                res = realce.transformacao_exponencial(arr)
+            else: # Quadrado
+                res = realce.transformacao_quadrado(arr)
+                
+            self._show_grid(self._nl_frm, [(arr, "Original (L)"), (res, f"{curva}")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_gama(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        try:
+            g = float(self._ent_gama.get())
+            res = realce.correcao_gama(arr, g)
+            self._show_grid(self._gam_frm, [(arr, "Original (L)"), (res, f"Correção Gama (y={g})")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_equalizacao(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        try:
+            res = realce.equalizar_histograma(arr)
+            self._show_grid(self._gam_frm, [(arr, "Original (L)"), (res, "Histograma Equalizado")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_fatiamento(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        try:
+            planos = realce.fatiamento_planos_bits(arr)
+            # Inverte para mostrar do 7 (MSB) ao 0 (LSB)
+            planos.reverse()
+            titulos = [f"Plano {i}" for i in range(7, -1, -1)]
+            
+            # Aqui fazemos um zip, mantendo as 8 imagens e seus títulos
+            arrays_titles = list(zip(planos, titulos))
+            
+            # O cols=4 no show_grid vai garantir que as 8 imagens formem duas linhas (4x2)!
+            self._show_grid(self._bit_frm, arrays_titles, cols=4, max_w=150, max_h=150)
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+
 # ─────────────────────────────────────────────
 #  JANELA PRINCIPAL
 # ─────────────────────────────────────────────
@@ -673,6 +879,7 @@ class App(tk.Tk):
             "C1": PageC1(self._content),
             "C2": PageC2(self._content),
             "C3": PageC3(self._content),
+            "Realce": AbaRealce(self._content)
         }
         for page in self._pages.values():
             page.place(relwidth=1, relheight=1)
@@ -685,6 +892,7 @@ class App(tk.Tk):
             ("C1", "Aritmética\n& Lógica",       ACCENT),
             ("C2", "Transformações\nGeométricas", ACCENT2),
             ("C3", "Espaços de Cor\n& Pseudocor", ACCENT3),
+            ("Realce", "Realce", ACCENT4)
         ]
 
         self._menu_btns = {}
