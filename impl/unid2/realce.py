@@ -1,6 +1,10 @@
 import numpy as np
 from PIL import Image
 
+########################################################################
+#                          TRANFORMAÇÕES LINEARES                      #
+########################################################################
+
 def transformacao_linear_intervalo(img_array: np.ndarray, f_min: int, f_max: int, g_min: int, g_max: int) -> np.ndarray:
     """
     Implementação A: Mapeamento de intervalo [f_min, f_max] para [g_min, g_max].
@@ -86,6 +90,10 @@ def transformacao_binaria(img_array: np.ndarray, limiar: int) -> np.ndarray:
     return g.astype(np.uint8)
 
 
+########################################################################
+#                      TRANFORMAÇÕES NÃO LINEARES                      #
+########################################################################
+
 def transformacao_logaritmica(img_array: np.ndarray) -> np.ndarray:
     """
     Expande os tons escuros (sombras) e comprime os tons claros.
@@ -140,3 +148,32 @@ def transformacao_quadrado(img_array: np.ndarray) -> np.ndarray:
     
     g = c * (f ** 2)
     return np.clip(g, 0, 255).astype(np.uint8)
+
+def equalizar_histograma(img_array: np.ndarray) -> np.ndarray:
+    """
+    Realça o contraste da imagem distribuindo uniformemente as intensidades dos pixels.
+    """
+    # 1. Calcula o Histograma original da imagem
+    # np.histogram retorna as contagens e os limites das barras (bins). 
+    # O flatten() transforma a matriz 2D numa linha só para contar os pixels.
+    hist, bins = np.histogram(img_array.flatten(), bins=256, range=[0, 256])
+    
+    # 2. Calcula a CDF (Cumulative Distribution Function / Soma Acumulada)
+    cdf = hist.cumsum()
+    
+    # 3. Normaliza a CDF matemática para o padrão 0 a 255
+    # Usamos uma máscara para ignorar os valores que são zero e não estragar a matemática
+    cdf_mascarada = np.ma.masked_equal(cdf, 0)
+    
+    # Aplica a equação de equalização: (CDF - Min) / (Max - Min) * 255
+    cdf_mascarada = (cdf_mascarada - cdf_mascarada.min()) * 255 / (cdf_mascarada.max() - cdf_mascarada.min())
+    
+    # Preenche os buracos da máscara com 0 e converte os valores para inteiros de 8 bits
+    cdf_final = np.ma.filled(cdf_mascarada, 0).astype(np.uint8)
+    
+    # 4. O Remapeamento Mágico do NumPy!
+    # A CDF virou um dicionário. Se o pixel original valia 50, o NumPy olha a posição 50 da CDF 
+    # e injeta o novo valor diretamente em toda a matriz de uma vez só.
+    img_equalizada = cdf_final[img_array]
+    
+    return img_equalizada
