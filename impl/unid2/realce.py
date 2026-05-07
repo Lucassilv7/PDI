@@ -84,3 +84,59 @@ def transformacao_binaria(img_array: np.ndarray, limiar: int) -> np.ndarray:
     # np.where é uma forma eficiente de aplicar a condição em toda a matriz
     g = np.where(img_array < limiar, 0, 255)
     return g.astype(np.uint8)
+
+
+def transformacao_logaritmica(img_array: np.ndarray) -> np.ndarray:
+    """
+    Expande os tons escuros (sombras) e comprime os tons claros.
+    Ideal para revelar detalhes em imagens muito escuras.
+    """
+    f = img_array.astype(np.float64)
+    
+    # Constante para garantir que o log de 255 não passe de 255 na saída
+    c = 255.0 / np.log(1 + 255.0)
+    
+    g = c * np.log(1 + f)
+    return np.clip(g, 0, 255).astype(np.uint8)
+
+
+def transformacao_raiz(img_array: np.ndarray) -> np.ndarray:
+    """
+    Similar à logarítmica, mas com uma curva mais suave.
+    Clareia a imagem expandindo levemente as sombras.
+    """
+    f = img_array.astype(np.float64)
+    
+    c = 255.0 / np.sqrt(255.0)
+    
+    g = c * np.sqrt(f)
+    return np.clip(g, 0, 255).astype(np.uint8)
+
+
+def transformacao_exponencial(img_array: np.ndarray) -> np.ndarray:
+    """
+    Comprime os tons escuros e médios, e expande os tons claros.
+    Ideal para escurecer imagens "lavadas" ou super expostas.
+    """
+    f = img_array.astype(np.float64)
+    
+    # Para evitar overflow, dimensionamos f para estar na mesma escala do logaritmo inverso
+    # Isso simula perfeitamente a curva que escurece os tons médios e preserva destaques
+    a = np.log(256.0) / 255.0
+    c = 255.0 / (np.exp(a * 255.0) - 1.0)
+    
+    g = c * (np.exp(a * f) - 1.0)
+    return np.clip(g, 0, 255).astype(np.uint8)
+
+
+def transformacao_quadrado(img_array: np.ndarray) -> np.ndarray:
+    """
+    Similar à exponencial, escurece a imagem globalmente,
+    preservando apenas os reflexos e pixels mais claros.
+    """
+    f = img_array.astype(np.float64)
+    
+    c = 255.0 / (255.0 ** 2)
+    
+    g = c * (f ** 2)
+    return np.clip(g, 0, 255).astype(np.uint8)
