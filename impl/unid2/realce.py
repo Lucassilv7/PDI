@@ -30,18 +30,39 @@ def transformacao_linear_intervalo(img_array: np.ndarray, f_min: int, f_max: int
     
     return g_final
 
-def transformacao_linear_por_partes(img_array: np.ndarray, pontos_f: list, pontos_g: list) -> np.ndarray:
+def transformacao_linear_por_partes(img_array: np.ndarray, lista_partes: list) -> np.ndarray:
     """
-    Implementação B: Transformação Linear por Partes.
+    Implementação B (Fiel ao enunciado): 
+    O usuário define N partes. Para cada parte, define o mapeamento [f_min, f_max] -> [g_min, g_max].
     
-    pontos_f: Lista com os limites dos intervalos de entrada (Eixo X). Ex: [0, 100, 200, 255]
-    pontos_g: Lista com os limites dos intervalos de saída (Eixo Y). Ex: [0, 50,  220, 255]
+    lista_partes deve ser uma lista de dicionários. Exemplo:
+    [
+        {'f_min': 0,   'f_max': 127, 'g_min': 0,  'g_max': 50},  # Parte 1 (Comprime sombras)
+        {'f_min': 128, 'f_max': 255, 'g_min': 51, 'g_max': 255}  # Parte 2 (Estica destaques)
+    ]
     """
-    # A função np.interp aplica exatamente a fórmula da Letra A
-    # mas cria as retas conectando os pontos que definimos!
-    g = np.interp(img_array, pontos_f, pontos_g)
+    f = img_array.astype(np.float64)
     
-    # O clip aqui é só por segurança, caso os pontos_g passem de 255
+    # Começamos com uma imagem zerada que será preenchida parte a parte
+    g = np.zeros_like(f)
+    
+    # Iteramos sobre a quantidade de partes escolhidas pelo usuário
+    for parte in lista_partes:
+        f_min, f_max = parte['f_min'], parte['f_max']
+        g_min, g_max = parte['g_min'], parte['g_max']
+        
+        # Cria a máscara: seleciona apenas os pixels que pertencem ao intervalo desta parte específica
+        mask = (f >= f_min) & (f <= f_max)
+        
+        # Aplica a fórmula exata da Transformação A apenas nos pixels da máscara
+        if f_max != f_min:
+            taxa_a = (g_max - g_min) / (f_max - f_min)
+            # Calcula o valor apenas onde a máscara é verdadeira
+            g[mask] = taxa_a * (f[mask] - f_min) + g_min
+        else:
+            g[mask] = g_min  # Proteção contra divisão por zero
+            
+    # Garantia final para que nenhum cálculo exceda os limites da imagem digital
     g_clip = np.clip(g, 0, 255)
     
     return g_clip.astype(np.uint8)
