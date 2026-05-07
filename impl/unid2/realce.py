@@ -196,3 +196,28 @@ def correcao_gama(img_array: np.ndarray, gama: float) -> np.ndarray:
     g = g_norm * 255.0
     
     return np.clip(g, 0, 255).astype(np.uint8)
+
+def fatiamento_planos_bits(img_array: np.ndarray) -> list:
+    """
+    Desmembra uma imagem de 8 bits em seus 8 planos binários.
+    Retorna uma lista com 8 matrizes (do Bit 0 ao Bit 7).
+    """
+    planos = []
+    
+    # Fazemos um loop pelos 8 bits (0 a 7)
+    for n in range(8):
+        # A máscara é 2 elevado a 'n'
+        # Em Python, o operador de deslocamento (shift) "1 << n" é a forma mais rápida de calcular 2^n
+        mascara = 1 << n
+        
+        # O np.bitwise_and compara o pixel binário com a máscara. 
+        # Se o bit 'n' for 1, o resultado será maior que 0. Se for 0, o resultado é 0.
+        plano_n_cru = np.bitwise_and(img_array, mascara)
+        
+        # Para que a gente consiga "ver" o plano na tela, precisamos converter:
+        # Onde o bit existe (>0), pintamos de Branco (255). Onde não existe (0), pintamos de Preto (0).
+        plano_visual = np.where(plano_n_cru > 0, 255, 0).astype(np.uint8)
+        
+        planos.append(plano_visual)
+        
+    return planos
