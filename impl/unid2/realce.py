@@ -45,3 +45,21 @@ def transformacao_linear_por_partes(img_array: np.ndarray, pontos_f: list, ponto
     g_clip = np.clip(g, 0, 255)
     
     return g_clip.astype(np.uint8)
+
+def transformacao_inversa(img_array: np.ndarray) -> np.ndarray:
+    """
+    Implementação C: Transformação Inversa (Negativo).
+    """
+    # O negativo de uma imagem é simplesmente 255 - valor do pixel
+    g = 255 - img_array
+    return g.astype(np.uint8)
+
+def transformacao_binaria(img_array: np.ndarray, limiar: int) -> np.ndarray:
+    """
+    Implementação D: Transformação Binária (Thresholding).
+    
+    limiar: O valor de corte para decidir se o pixel vira preto ou branco.
+    """
+    # np.where é uma forma eficiente de aplicar a condição em toda a matriz
+    g = np.where(img_array < limiar, 0, 255)
+    return g.astype(np.uint8)
