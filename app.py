@@ -757,22 +757,49 @@ class AbaRealce(BasePage):
         self._nl_res_frm = tk.Frame(p, bg=BG_PANEL)
         self._nl_res_frm.pack(padx=20, pady=4)
 
-        # ── 2E Equalização e Gama ──
-        section_title(p, "2E — Correção Gama e Equalização")
+        # ── 2E Correção Gama ──
+        section_title(p, "2E — Correção Gama")
         gam_ctrl = tk.Frame(p, bg=BG_PANEL)
         gam_ctrl.pack(**pad)
         
-        tk.Label(gam_ctrl, text="Gama (y):", bg=BG_PANEL, fg="white").grid(row=0, column=0)
-        self._ent_gama = tk.Entry(gam_ctrl, width=5); self._ent_gama.insert(0, "1.0"); self._ent_gama.grid(row=0, column=1, padx=5)
-        make_button(gam_ctrl, "Aplicar Gama", self._run_gama).grid(row=0, column=2, padx=(0, 20))
-        make_button(gam_ctrl, "Equalizar Histograma", self._run_equalizacao).grid(row=0, column=3)
+        tk.Label(gam_ctrl, text="Gama (γ):", bg=BG_PANEL, fg="white").pack(side="left")
+        
+        # Variável para o tempo real da Correção Gama
+        self._auto_gama = tk.BooleanVar(value=False)
+        
+        # Slider para Gama (Permite valores de 0.1 a 5.0 com resolução de 0.1)
+        self._scale_gama = tk.Scale(gam_ctrl, from_=0.1, to=5.0, resolution=0.1, orient="horizontal", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=200,
+                                    command=self._on_gama_slider_change)
+        self._scale_gama.set(1.0) # Gama 1.0 = Imagem original
+        self._scale_gama.pack(side="left", padx=10)
+        
+        make_button(gam_ctrl, "Aplicar", self._run_gama).pack(side="left", padx=5)
+        
+        chk_auto_gama = tk.Checkbutton(gam_ctrl, text="Tempo real", variable=self._auto_gama, 
+                                       bg=BG_PANEL, fg="white", selectcolor=BG_DARK, 
+                                       activebackground=BG_PANEL, activeforeground="white")
+        chk_auto_gama.pack(side="left", padx=5)
         
         self._gam_res_frm = tk.Frame(p, bg=BG_PANEL)
         self._gam_res_frm.pack(padx=20, pady=4)
 
-        # ── 2F Fatiamento de Bits ──
-        section_title(p, "2F — Fatiamento de Planos de Bits")
-        make_button(p, "Extrair 8 Planos de Bits", self._run_fatiamento).pack(**pad)
+        # ── 2F Equalização de Histograma ──
+        section_title(p, "2F — Equalização de Histograma")
+        eq_ctrl = tk.Frame(p, bg=BG_PANEL)
+        eq_ctrl.pack(**pad)
+        
+        make_button(eq_ctrl, "Equalizar Imagem Automático", self._run_equalizacao).pack(side="left")
+        
+        # Frame de resultados exclusivo para a equalização
+        self._eq_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._eq_res_frm.pack(padx=20, pady=4)
+
+        # ── 2G Fatiamento de Bits ──
+        section_title(p, "2G — Fatiamento de Planos de Bits")
+        bit_ctrl = tk.Frame(p, bg=BG_PANEL)
+        bit_ctrl.pack(**pad)
+        make_button(bit_ctrl, "Extrair 8 Planos de Bits", self._run_fatiamento).pack(side="left")
         
         self._bit_res_frm = tk.Frame(p, bg=BG_PANEL)
         self._bit_res_frm.pack(padx=20, pady=4)
@@ -783,9 +810,9 @@ class AbaRealce(BasePage):
 
     def _on_img_load(self, arr, _path):
         self._img = arr
-        # Limpar absolutamente todos os frames de resultado
+        # Adicionamos o self._eq_res_frm na lista de limpeza!
         frms = [self._lin_res_frm, self._inv_res_frm, self._bin_res_frm, 
-                self._nl_res_frm, self._gam_res_frm, self._bit_res_frm]
+                self._nl_res_frm, self._gam_res_frm, self._eq_res_frm, self._bit_res_frm]
         for frm in frms:
             for w in frm.winfo_children(): w.destroy()
 
@@ -886,20 +913,27 @@ class AbaRealce(BasePage):
         res = mapping[curva](arr)
         self._show_grid(self._nl_res_frm, [(arr, "Original"), (res, curva)])
 
-    def _run_gama(self):
+    def _on_gama_slider_change(self, *args):
+        """Callback disparado toda vez que o slider do Gama se move."""
+        if hasattr(self, '_auto_gama') and self._auto_gama.get() and self._img is not None:
+            self._run_gama()
+
+    def _run_gama(self, *args):
         arr = self._get_gray_img()
         if arr is None: return
         try:
-            g = float(self._ent_gama.get())
+            # Pega o valor do slider (float)
+            g = float(self._scale_gama.get())
             res = realce.correcao_gama(arr, g)
-            self._show_grid(self._gam_res_frm, [(arr, "Original"), (res, f"Gama {g}")])
-        except Exception as e: messagebox.showerror("Erro", str(e))
+            self._show_grid(self._gam_res_frm, [(arr, "Original"), (res, f"Gama (y={g})")])
+        except Exception as e: 
+            messagebox.showerror("Erro", str(e))
 
     def _run_equalizacao(self):
         arr = self._get_gray_img()
         if arr is None: return
         res = realce.equalizar_histograma(arr)
-        self._show_grid(self._gam_res_frm, [(arr, "Original"), (res, "Equalizada")])
+        self._show_grid(self._eq_res_frm, [(arr, "Original"), (res, "Equalizada")])
 
     def _run_fatiamento(self):
         arr = self._get_gray_img()
