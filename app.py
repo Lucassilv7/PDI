@@ -723,8 +723,24 @@ class AbaRealce(BasePage):
         bin_ctrl.pack(**pad)
         
         tk.Label(bin_ctrl, text="Limiar (T):", bg=BG_PANEL, fg="white").pack(side="left")
-        self._ent_limiar = tk.Entry(bin_ctrl, width=5); self._ent_limiar.insert(0, "127"); self._ent_limiar.pack(side="left", padx=5)
-        make_button(bin_ctrl, "Aplicar Limiar", self._run_binaria).pack(side="left", padx=5)
+        
+        # Variável para controlar o tempo real da Binária
+        self._auto_bin = tk.BooleanVar(value=False)
+        
+        # Slider do Limiar
+        self._scale_limiar = tk.Scale(bin_ctrl, from_=0, to=255, orient="horizontal", 
+                                      bg=BG_PANEL, fg="white", highlightthickness=0, length=200,
+                                      command=self._on_bin_slider_change)
+        self._scale_limiar.set(127)
+        self._scale_limiar.pack(side="left", padx=10)
+        
+        # Botões alinhados na horizontal
+        make_button(bin_ctrl, "Aplicar", self._run_binaria).pack(side="left", padx=5)
+        
+        chk_auto_bin = tk.Checkbutton(bin_ctrl, text="Tempo real", variable=self._auto_bin, 
+                                      bg=BG_PANEL, fg="white", selectcolor=BG_DARK, 
+                                      activebackground=BG_PANEL, activeforeground="white")
+        chk_auto_bin.pack(side="left", padx=5)
         
         self._bin_res_frm = tk.Frame(p, bg=BG_PANEL)
         self._bin_res_frm.pack(padx=20, pady=4)
@@ -839,15 +855,23 @@ class AbaRealce(BasePage):
         if arr is None: return
         res = realce.transformacao_inversa(arr)
         self._show_grid(self._inv_res_frm, [(arr, "Original"), (res, "Negativo")])
+    
+    def _on_bin_slider_change(self, *args):
+        """Callback disparado toda vez que o slider do limiar se move."""
+        # Garante que as variáveis já foram inicializadas e a imagem existe
+        if hasattr(self, '_auto_bin') and self._auto_bin.get() and self._img is not None:
+            self._run_binaria()
 
     def _run_binaria(self):
         arr = self._get_gray_img()
         if arr is None: return
         try:
-            t = int(self._ent_limiar.get())
+            # Agora lemos o valor de corte diretamente do slider
+            t = self._scale_limiar.get()
             res = realce.transformacao_binaria(arr, t)
             self._show_grid(self._bin_res_frm, [(arr, "Original"), (res, f"Binária T={t}")])
-        except Exception as e: messagebox.showerror("Erro", str(e))
+        except Exception as e: 
+            messagebox.showerror("Erro", str(e))
 
     def _run_nao_linear(self):
         arr = self._get_gray_img()
