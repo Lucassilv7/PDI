@@ -746,13 +746,12 @@ class AbaRealce(BasePage):
         self._bin_res_frm.pack(padx=20, pady=4)
 
         # ── 2D Transformações Não Lineares ──
+        # ── 2D Transformações Não Lineares ──
         section_title(p, "2D — Transformações Não Lineares")
         nl_ctrl = tk.Frame(p, bg=BG_PANEL)
         nl_ctrl.pack(**pad)
         
-        self._cb_nao_linear = make_combobox(nl_ctrl, ["Logarítmica", "Raiz Quadrada", "Exponencial", "Quadrado"], width=15)
-        self._cb_nao_linear.grid(row=0, column=0, padx=(0, 10))
-        make_button(nl_ctrl, "Aplicar Curva", self._run_nao_linear).grid(row=0, column=1)
+        make_button(nl_ctrl, "Exibir todas", self._run_nao_linear).pack(side="left")
         
         self._nl_res_frm = tk.Frame(p, bg=BG_PANEL)
         self._nl_res_frm.pack(padx=20, pady=4)
@@ -900,18 +899,31 @@ class AbaRealce(BasePage):
         except Exception as e: 
             messagebox.showerror("Erro", str(e))
 
-    def _run_nao_linear(self):
+    def _run_nao_linear(self, *args):
         arr = self._get_gray_img()
         if arr is None: return
-        curva = self._cb_nao_linear.get()
-        mapping = {
-            "Logarítmica": realce.transformacao_logaritmica,
-            "Raiz Quadrada": realce.transformacao_raiz,
-            "Exponencial": realce.transformacao_exponencial,
-            "Quadrado": realce.transformacao_quadrado
-        }
-        res = mapping[curva](arr)
-        self._show_grid(self._nl_res_frm, [(arr, "Original"), (res, curva)])
+        
+        try:
+            # Calcula todas as 4 transformações de uma vez
+            res_log = realce.transformacao_logaritmica(arr)
+            res_raiz = realce.transformacao_raiz(arr)
+            res_exp = realce.transformacao_exponencial(arr)
+            res_quad = realce.transformacao_quadrado(arr)
+            
+            # Monta a lista com os títulos para a grade
+            comparativos = [
+                (arr, "Original"),
+                (res_log, "Logarítmica"),
+                (res_raiz, "Raiz Quadrada"),
+                (res_exp, "Exponencial"),
+                (res_quad, "Quadrado")
+            ]
+            
+            # O cols=3 vai colocar 3 imagens na primeira linha e 2 na segunda linha.
+            # Reduzi um pouco o max_w e max_h para garantir que caibam bem na tela.
+            self._show_grid(self._nl_res_frm, comparativos, cols=3, max_w=180, max_h=180)
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
 
     def _on_gama_slider_change(self, *args):
         """Callback disparado toda vez que o slider do Gama se move."""
