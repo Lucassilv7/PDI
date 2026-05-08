@@ -11,6 +11,7 @@ from PIL import Image, ImageTk
 import os
 
 from impl import C1, C2, C3
+from impl.unid2 import realce
 
 # ─────────────────────────────────────────────
 #  PALETA E FONTES
@@ -22,6 +23,7 @@ BG_INPUT  = "#1c2128"
 ACCENT    = "#58a6ff"
 ACCENT2   = "#3fb950"
 ACCENT3   = "#f78166"
+ACCENT4   = "#d73a49"
 TEXT_PRI  = "#e6edf3"
 TEXT_SEC  = "#8b949e"
 TEXT_DIM  = "#484f58"
@@ -551,7 +553,7 @@ class PageC3(BasePage):
         # ── 3B Espaços de cor ──
         section_title(p, "3B — Espaços de Cor")
         space_frm = tk.Frame(p, bg=BG_PANEL); space_frm.pack(padx=20,pady=4,anchor="w")
-        self._space = make_combobox(space_frm, ["CMYK","YUV","HSV"], width=10)
+        self._space = make_combobox(space_frm, ["CMY", "CMYK", "YUV", "HSV"], width=10)
         self._space.grid(row=0,column=0,padx=(0,10))
         make_button(space_frm, "Mostrar canais", self._run_space).grid(row=0,column=1)
         self._space_frm = tk.Frame(p, bg=BG_PANEL)
@@ -604,7 +606,10 @@ class PageC3(BasePage):
         if not self._check(): return
         space = self._space.get()
         try:
-            if space == "CMYK":
+            if space == "CMY":
+                imgs = C3.get_cmy_tinted(self._img)
+                titles = ["Ciano (C)","Magenta (M)","Amarelo (Y)"]
+            elif space == "CMYK":
                 imgs = C3.get_cmyk_tinted_images(self._img)
                 titles = ["Ciano (C)","Magenta (M)","Amarelo (Y)","Preto (K)"]
             elif space == "YUV":
@@ -628,6 +633,380 @@ class PageC3(BasePage):
         falsa = C3.color_redistribution(self._img)
         self._show_row(self._redist_frm,
                        [(self._img,"Original"),(falsa,"Falsa Cor (G→R, B→G, R→B)")])
+
+
+class AbaRealce(BasePage):
+    """
+    Aba dedicada à Unidade 2: Realce de Imagens (C2)
+    """
+    def __init__(self, parent, **kw):
+        super().__init__(parent, **kw)
+        inner = self.scrollable()
+        self._img = None
+        self._build(inner)
+
+    def _build(self, p):
+        pad = dict(padx=20, pady=4, anchor="w")
+        section_title(p, "Conjunto 2 — Realce de Imagens (Domínio Espacial)")
+
+        self._sel = ImageSelector(p, "Imagem", on_load=self._on_img_load)
+        self._sel.pack(**pad, fill="x")
+
+        # ── 2A Transformação Linear (Intervalo) ──
+        section_title(p, "2A — Mapeamento de Intervalo Linear")
+        lin_ctrl = tk.Frame(p, bg=BG_PANEL)
+        lin_ctrl.pack(**pad)
+        
+        # Variável para controlar o estado do tempo real (Nasce como Falso)
+        self._auto_update = tk.BooleanVar(value=False)
+
+        # -- Frame de Entradas (f) --
+        frm_f = tk.Frame(lin_ctrl, bg=BG_PANEL)
+        frm_f.grid(row=0, column=0, padx=(0, 10))
+        
+        self._scale_fmin = tk.Scale(frm_f, from_=0, to=254, orient="horizontal", label="f_min", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
+        self._scale_fmin.set(0)
+        self._scale_fmin.pack(side="left")
+        
+        self._scale_fmax = tk.Scale(frm_f, from_=1, to=255, orient="horizontal", label="f_max", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
+        self._scale_fmax.set(150)
+        self._scale_fmax.pack(side="left")
+
+        # -- Frame de Saídas (g) --
+        frm_g = tk.Frame(lin_ctrl, bg=BG_PANEL)
+        frm_g.grid(row=0, column=1, padx=(0, 10))
+        
+        self._scale_gmin = tk.Scale(frm_g, from_=0, to=255, orient="horizontal", label="g_min", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
+        self._scale_gmin.set(0)
+        self._scale_gmin.pack(side="left")
+        
+        self._scale_gmax = tk.Scale(frm_g, from_=0, to=255, orient="horizontal", label="g_max", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=120,
+                                    command=self._on_slider_change)
+        self._scale_gmax.set(255)
+        self._scale_gmax.pack(side="left")
+
+        # -- Frame de Controles (Aplicar, Resetar, Auto-Update) --
+        frm_btn = tk.Frame(lin_ctrl, bg=BG_PANEL)
+        frm_btn.grid(row=0, column=2, sticky="s", pady=15)
+        
+        make_button(frm_btn, "Aplicar", self._run_intervalo).pack(fill="x", pady=2)
+        make_button(frm_btn, "Resetar", self._resetar_intervalo).pack(fill="x", pady=2)
+        
+        # O checkbox que controla o auto-update
+        chk_auto = tk.Checkbutton(frm_btn, text="Tempo real", variable=self._auto_update, 
+                                  bg=BG_PANEL, fg="white", selectcolor=BG_DARK, 
+                                  activebackground=BG_PANEL, activeforeground="white")
+        chk_auto.pack(anchor="w")
+
+        self._lin_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._lin_res_frm.pack(padx=20, pady=4)
+
+        # ── 2B Inversa (Negativo) ──
+        section_title(p, "2B — Transformação Inversa (Negativo)")
+        inv_ctrl = tk.Frame(p, bg=BG_PANEL)
+        inv_ctrl.pack(**pad)
+        make_button(inv_ctrl, "Gerar Negativo", self._run_inversa).pack(side="left")
+        
+        self._inv_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._inv_res_frm.pack(padx=20, pady=4)
+
+        # ── 2C Binária (Limiarização) ──
+        section_title(p, "2C — Transformação Binária (Threshold)")
+        bin_ctrl = tk.Frame(p, bg=BG_PANEL)
+        bin_ctrl.pack(**pad)
+        
+        tk.Label(bin_ctrl, text="Limiar (T):", bg=BG_PANEL, fg="white").pack(side="left")
+        
+        # Variável para controlar o tempo real da Binária
+        self._auto_bin = tk.BooleanVar(value=False)
+        
+        # Slider do Limiar
+        self._scale_limiar = tk.Scale(bin_ctrl, from_=0, to=255, orient="horizontal", 
+                                      bg=BG_PANEL, fg="white", highlightthickness=0, length=200,
+                                      command=self._on_bin_slider_change)
+        self._scale_limiar.set(127)
+        self._scale_limiar.pack(side="left", padx=10)
+        
+        # Botões alinhados na horizontal
+        make_button(bin_ctrl, "Aplicar", self._run_binaria).pack(side="left", padx=5)
+        
+        chk_auto_bin = tk.Checkbutton(bin_ctrl, text="Tempo real", variable=self._auto_bin, 
+                                      bg=BG_PANEL, fg="white", selectcolor=BG_DARK, 
+                                      activebackground=BG_PANEL, activeforeground="white")
+        chk_auto_bin.pack(side="left", padx=5)
+        
+        self._bin_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._bin_res_frm.pack(padx=20, pady=4)
+
+        # ── 2D Transformações Não Lineares ──
+        # ── 2D Transformações Não Lineares ──
+        section_title(p, "2D — Transformações Não Lineares")
+        nl_ctrl = tk.Frame(p, bg=BG_PANEL)
+        nl_ctrl.pack(**pad)
+        
+        make_button(nl_ctrl, "Exibir todas", self._run_nao_linear).pack(side="left")
+        
+        self._nl_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._nl_res_frm.pack(padx=20, pady=4)
+
+        # ── 2E Correção Gama ──
+        section_title(p, "2E — Correção Gama")
+        gam_ctrl = tk.Frame(p, bg=BG_PANEL)
+        gam_ctrl.pack(**pad)
+        
+        tk.Label(gam_ctrl, text="Gama (γ):", bg=BG_PANEL, fg="white").pack(side="left")
+        
+        # Variável para o tempo real da Correção Gama
+        self._auto_gama = tk.BooleanVar(value=False)
+        
+        # Slider para Gama (Permite valores de 0.1 a 5.0 com resolução de 0.1)
+        self._scale_gama = tk.Scale(gam_ctrl, from_=0.1, to=5.0, resolution=0.1, orient="horizontal", 
+                                    bg=BG_PANEL, fg="white", highlightthickness=0, length=200,
+                                    command=self._on_gama_slider_change)
+        self._scale_gama.set(1.0) # Gama 1.0 = Imagem original
+        self._scale_gama.pack(side="left", padx=10)
+        
+        make_button(gam_ctrl, "Aplicar", self._run_gama).pack(side="left", padx=5)
+        
+        chk_auto_gama = tk.Checkbutton(gam_ctrl, text="Tempo real", variable=self._auto_gama, 
+                                       bg=BG_PANEL, fg="white", selectcolor=BG_DARK, 
+                                       activebackground=BG_PANEL, activeforeground="white")
+        chk_auto_gama.pack(side="left", padx=5)
+        
+        self._gam_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._gam_res_frm.pack(padx=20, pady=4)
+
+        # ── 2F Equalização de Histograma ──
+        section_title(p, "2F — Equalização de Histograma")
+        eq_ctrl = tk.Frame(p, bg=BG_PANEL)
+        eq_ctrl.pack(**pad)
+        
+        make_button(eq_ctrl, "Equalizar Imagem Automático", self._run_equalizacao).pack(side="left")
+        
+        # Frame de resultados exclusivo para a equalização
+        self._eq_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._eq_res_frm.pack(padx=20, pady=4)
+
+        # ── 2G Fatiamento de Bits ──
+        section_title(p, "2G — Fatiamento de Planos de Bits")
+        bit_ctrl = tk.Frame(p, bg=BG_PANEL)
+        bit_ctrl.pack(**pad)
+        make_button(bit_ctrl, "Extrair 8 Planos de Bits", self._run_fatiamento).pack(side="left")
+        
+        self._bit_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._bit_res_frm.pack(padx=20, pady=4)
+
+    # =========================================================================
+    # Helpers e Validações
+    # =========================================================================
+
+    def _on_img_load(self, arr, _path):
+        self._img = arr
+        # Adicionamos o self._eq_res_frm na lista de limpeza!
+        frms = [self._lin_res_frm, self._inv_res_frm, self._bin_res_frm, 
+                self._nl_res_frm, self._gam_res_frm, self._eq_res_frm, self._bit_res_frm]
+        for frm in frms:
+            for w in frm.winfo_children(): w.destroy()
+
+    def _get_gray_img(self):
+        if self._img is None:
+            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
+            return None
+        if len(self._img.shape) == 3:
+            return np.array(Image.fromarray(self._img).convert("L"))
+        return self._img
+
+    def _show_grid(self, parent, arrays_titles, cols=4, max_w=230, max_h=200):
+        for widget in parent.winfo_children(): widget.destroy()
+        for i, (arr, title) in enumerate(arrays_titles):
+            frm, lbl_img, lbl_info = image_card(parent, title)
+            row, col = i // cols, i % cols
+            frm.grid(row=row, column=col, padx=5, pady=4, sticky="n")
+            show_array_in_label(arr, lbl_img, lbl_info, max_w, max_h)
+
+    # =========================================================================
+    # Callbacks
+    # =========================================================================
+
+    def _run_intervalo(self, *args):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        # Lê os valores direto dos sliders (já vêm como inteiros)
+        fmin = self._scale_fmin.get()
+        fmax = self._scale_fmax.get()
+        gmin = self._scale_gmin.get()
+        gmax = self._scale_gmax.get()
+        
+        # Trava de segurança: impede que f_min e f_max sejam idênticos (divisão por zero)
+        if fmin == fmax:
+            if fmax < 255: 
+                fmax += 1
+                self._scale_fmax.set(fmax)
+            else: 
+                fmin -= 1
+                self._scale_fmin.set(fmin)
+
+        try:
+            res = realce.transformacao_linear_intervalo(arr, fmin, fmax, gmin, gmax)
+            # Mostra o intervalo escolhido no título dinamicamente
+            titulo = f"Intervalo: [{fmin}, {fmax}] → [{gmin}, {gmax}]"
+            self._show_grid(self._lin_res_frm, [(arr, "Original"), (res, titulo)])
+        except Exception as e: 
+            messagebox.showerror("Erro", str(e))
+    
+    def _on_slider_change(self, *args):
+        """Callback disparado toda vez que um slider move um milímetro."""
+        # Só executa automaticamente se a caixinha estiver marcada E a imagem existir
+        if self._auto_update.get() and self._img is not None:
+            self._run_intervalo()
+
+    def _resetar_intervalo(self):
+        """Volta os sliders para o padrão sem estourar o layout"""
+        self._scale_fmin.set(0)
+        self._scale_fmax.set(255)
+        self._scale_gmin.set(0)
+        self._scale_gmax.set(255)
+        # O set() do slider já vai chamar o _run_intervalo automaticamente!
+
+    def _run_inversa(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        res = realce.transformacao_inversa(arr)
+        self._show_grid(self._inv_res_frm, [(arr, "Original"), (res, "Negativo")])
+    
+    def _on_bin_slider_change(self, *args):
+        """Callback disparado toda vez que o slider do limiar se move."""
+        # Garante que as variáveis já foram inicializadas e a imagem existe
+        if hasattr(self, '_auto_bin') and self._auto_bin.get() and self._img is not None:
+            self._run_binaria()
+
+    def _run_binaria(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        try:
+            # Agora lemos o valor de corte diretamente do slider
+            t = self._scale_limiar.get()
+            res = realce.transformacao_binaria(arr, t)
+            self._show_grid(self._bin_res_frm, [(arr, "Original"), (res, f"Binária T={t}")])
+        except Exception as e: 
+            messagebox.showerror("Erro", str(e))
+
+    def _run_nao_linear(self, *args):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        try:
+            # Calcula todas as 4 transformações de uma vez
+            res_log = realce.transformacao_logaritmica(arr)
+            res_raiz = realce.transformacao_raiz(arr)
+            res_exp = realce.transformacao_exponencial(arr)
+            res_quad = realce.transformacao_quadrado(arr)
+            
+            # Monta a lista com os títulos para a grade
+            comparativos = [
+                (arr, "Original"),
+                (res_log, "Logarítmica"),
+                (res_raiz, "Raiz Quadrada"),
+                (res_exp, "Exponencial"),
+                (res_quad, "Quadrado")
+            ]
+            
+            # O cols=3 vai colocar 3 imagens na primeira linha e 2 na segunda linha.
+            # Reduzi um pouco o max_w e max_h para garantir que caibam bem na tela.
+            self._show_grid(self._nl_res_frm, comparativos, cols=3, max_w=180, max_h=180)
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _on_gama_slider_change(self, *args):
+        """Callback disparado toda vez que o slider do Gama se move."""
+        if hasattr(self, '_auto_gama') and self._auto_gama.get() and self._img is not None:
+            self._run_gama()
+
+    def _run_gama(self, *args):
+        arr = self._get_gray_img()
+        if arr is None: return
+        try:
+            # Pega o valor do slider (float)
+            g = float(self._scale_gama.get())
+            res = realce.correcao_gama(arr, g)
+            self._show_grid(self._gam_res_frm, [(arr, "Original"), (res, f"Gama (y={g})")])
+        except Exception as e: 
+            messagebox.showerror("Erro", str(e))
+
+    def _run_equalizacao(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        try:
+            # 1. Processa a imagem
+            res = realce.equalizar_histograma(arr)
+            
+            # 2. Gera os gráficos dos histogramas
+            hist_orig = self._plot_hist_to_array(arr)
+            hist_eq = self._plot_hist_to_array(res)
+            
+            # 3. Monta a lista comparativa
+            # Organizado para que na grade 2x2 fiquem:
+            # Imagem Original | Imagem Equalizada
+            # Hist. Original  | Hist. Equalizado
+            comparativo = [
+                (arr, "Imagem Original"),
+                (res, "Imagem Equalizada"),
+                (hist_orig, "Histograma Original"),
+                (hist_eq, "Histograma Equalizado")
+            ]
+            
+            # Exibe em grade de 2 colunas
+            self._show_grid(self._eq_res_frm, comparativo, cols=2, max_w=350, max_h=250)
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha na equalização: {e}")
+
+    def _run_fatiamento(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        planos = realce.fatiamento_planos_bits(arr)
+        planos.reverse()
+        titles = [f"Bit {i}" for i in range(7, -1, -1)]
+        self._show_grid(self._bit_res_frm, list(zip(planos, titles)), cols=4, max_w=150, max_h=150)
+    
+    def _plot_hist_to_array(self, arr):
+        """Gera um array de imagem contendo o gráfico do histograma."""
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        
+        # Criamos uma figura pequena e com o fundo do seu painel
+        fig, ax = plt.subplots(figsize=(3, 2), dpi=100)
+        fig.patch.set_facecolor('#161b22') # BG_PANEL
+        ax.set_facecolor('#161b22')
+
+        # Desenha o histograma
+        ax.hist(arr.flatten(), bins=256, range=[0, 256], color='#58a6ff', alpha=0.8)
+        
+        # Estética do gráfico (cores dos eixos para combinar com o tema Dark)
+        ax.tick_params(colors='white', labelsize=8)
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#30363d') # BORDER
+
+        ax.set_xlim([0, 256])
+        plt.tight_layout()
+
+        # Converte o desenho do Matplotlib para um array do NumPy (RGB)
+        canvas = FigureCanvasAgg(fig)
+        canvas.draw()
+        rgba_buffer = canvas.buffer_rgba()
+        res_array = np.array(rgba_buffer)
+        
+        plt.close(fig) # Fecha a figura para não consumir memória
+        return res_array
 
 
 # ─────────────────────────────────────────────
@@ -670,6 +1049,7 @@ class App(tk.Tk):
             "C1": PageC1(self._content),
             "C2": PageC2(self._content),
             "C3": PageC3(self._content),
+            "Realce": AbaRealce(self._content)
         }
         for page in self._pages.values():
             page.place(relwidth=1, relheight=1)
@@ -682,6 +1062,7 @@ class App(tk.Tk):
             ("C1", "Aritmética\n& Lógica",       ACCENT),
             ("C2", "Transformações\nGeométricas", ACCENT2),
             ("C3", "Espaços de Cor\n& Pseudocor", ACCENT3),
+            ("Realce", "Realce", ACCENT4)
         ]
 
         self._menu_btns = {}
