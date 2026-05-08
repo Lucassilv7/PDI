@@ -944,8 +944,31 @@ class AbaRealce(BasePage):
     def _run_equalizacao(self):
         arr = self._get_gray_img()
         if arr is None: return
-        res = realce.equalizar_histograma(arr)
-        self._show_grid(self._eq_res_frm, [(arr, "Original"), (res, "Equalizada")])
+        
+        try:
+            # 1. Processa a imagem
+            res = realce.equalizar_histograma(arr)
+            
+            # 2. Gera os gráficos dos histogramas
+            hist_orig = self._plot_hist_to_array(arr)
+            hist_eq = self._plot_hist_to_array(res)
+            
+            # 3. Monta a lista comparativa
+            # Organizado para que na grade 2x2 fiquem:
+            # Imagem Original | Imagem Equalizada
+            # Hist. Original  | Hist. Equalizado
+            comparativo = [
+                (arr, "Imagem Original"),
+                (res, "Imagem Equalizada"),
+                (hist_orig, "Histograma Original"),
+                (hist_eq, "Histograma Equalizado")
+            ]
+            
+            # Exibe em grade de 2 colunas
+            self._show_grid(self._eq_res_frm, comparativo, cols=2, max_w=350, max_h=250)
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha na equalização: {e}")
 
     def _run_fatiamento(self):
         arr = self._get_gray_img()
@@ -954,6 +977,36 @@ class AbaRealce(BasePage):
         planos.reverse()
         titles = [f"Bit {i}" for i in range(7, -1, -1)]
         self._show_grid(self._bit_res_frm, list(zip(planos, titles)), cols=4, max_w=150, max_h=150)
+    
+    def _plot_hist_to_array(self, arr):
+        """Gera um array de imagem contendo o gráfico do histograma."""
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        
+        # Criamos uma figura pequena e com o fundo do seu painel
+        fig, ax = plt.subplots(figsize=(3, 2), dpi=100)
+        fig.patch.set_facecolor('#161b22') # BG_PANEL
+        ax.set_facecolor('#161b22')
+
+        # Desenha o histograma
+        ax.hist(arr.flatten(), bins=256, range=[0, 256], color='#58a6ff', alpha=0.8)
+        
+        # Estética do gráfico (cores dos eixos para combinar com o tema Dark)
+        ax.tick_params(colors='white', labelsize=8)
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#30363d') # BORDER
+
+        ax.set_xlim([0, 256])
+        plt.tight_layout()
+
+        # Converte o desenho do Matplotlib para um array do NumPy (RGB)
+        canvas = FigureCanvasAgg(fig)
+        canvas.draw()
+        rgba_buffer = canvas.buffer_rgba()
+        res_array = np.array(rgba_buffer)
+        
+        plt.close(fig) # Fecha a figura para não consumir memória
+        return res_array
 
 
 # ─────────────────────────────────────────────
