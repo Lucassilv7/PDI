@@ -68,3 +68,133 @@ def filtro_moda(img_array: np.ndarray, kernel_size: int = 3) -> np.ndarray:
         return resultado.mode
         
     return _deslizar_janela(img_array, kernel_size, calc_moda)
+
+def _aplicar_filtro_variancia(img_array: np.ndarray, mascaras: list) -> np.ndarray:
+    """
+    Função base que desliza uma janela 5x5 pela imagem.
+    Para cada pixel, testa todas as 'mascaras' recebidas, calcula a variância
+    de cada sub-região e atribui ao pixel central a média da região com menor variância.
+    """
+    # A janela para estes filtros clássicos é sempre 5x5, logo o padding é 2
+    pad_width = 2 
+    img_padded = np.pad(img_array, pad_width, mode='edge')
+    
+    linhas, colunas = img_array.shape
+    img_filtrada = np.zeros_like(img_array, dtype=np.float64)
+    
+    # Desliza a janela 5x5 por toda a imagem
+    for i in range(linhas):
+        for j in range(colunas):
+            vizinhanca = img_padded[i : i + 5, j : j + 5]
+            
+            menor_variancia = float('inf')
+            melhor_media = 0.0
+            
+            # Avalia cada sub-região definida pelo algoritmo escolhido
+            for mascara in mascaras:
+                # Extrai apenas os pixels pertencentes a esta máscara
+                pixels_regiao = vizinhanca[mascara]
+                
+                var = np.var(pixels_regiao)
+                
+                # Guarda a média da região mais homogénea encontrada
+                if var < menor_variancia:
+                    menor_variancia = var
+                    melhor_media = np.mean(pixels_regiao)
+            
+            img_filtrada[i, j] = melhor_media
+            
+    return np.clip(img_filtrada, 0, 255).astype(np.uint8)
+
+
+# =========================================================================
+# FILTROS PASSA-BAIXA (PRESERVAÇÃO DE BORDAS)
+# =========================================================================
+def filtro_kuwahara(img_array: np.ndarray) -> np.ndarray:
+    """
+    Filtro de Kuwahara (ou Kawahara).
+    Divide a janela 5x5 em 4 regiões quadradas de 3x3 nos cantos.
+    """
+    mascaras = []
+    # Região 1: Canto Superior Esquerdo
+    m1 = np.zeros((5, 5), dtype=bool); m1[0:3, 0:3] = True
+    mascaras.append(m1)
+    # Região 2: Canto Superior Direito
+    m2 = np.zeros((5, 5), dtype=bool); m2[0:3, 2:5] = True
+    mascaras.append(m2)
+    # Região 3: Canto Inferior Esquerdo
+    m3 = np.zeros((5, 5), dtype=bool); m3[2:5, 0:3] = True
+    mascaras.append(m3)
+    # Região 4: Canto Inferior Direito
+    m4 = np.zeros((5, 5), dtype=bool); m4[2:5, 2:5] = True
+    mascaras.append(m4)
+    
+    return _aplicar_filtro_variancia(img_array, mascaras)
+
+def filtro_tomita_tsuji(img_array: np.ndarray) -> np.ndarray:
+    """
+    Filtro de Tomita e Tsuji.
+    Usa as mesmas 4 regiões do Kuwahara + 1 região 3x3 perfeitamente no centro.
+    """
+    # Recria as 4 máscaras do Kuwahara para não duplicar código visualmente
+    m1 = np.zeros((5, 5), dtype=bool); m1[0:3, 0:3] = True
+    m2 = np.zeros((5, 5), dtype=bool); m2[0:3, 2:5] = True
+    m3 = np.zeros((5, 5), dtype=bool); m3[2:5, 0:3] = True
+    m4 = np.zeros((5, 5), dtype=bool); m4[2:5, 2:5] = True
+    mascaras = [m1, m2, m3, m4]
+    
+    # Adiciona a 5ª máscara (Centro)
+    m5 = np.zeros((5, 5), dtype=bool); m5[1:4, 1:4] = True
+    mascaras.append(m5)
+    
+    return _aplicar_filtro_variancia(img_array, mascaras)
+
+def filtro_nagao_matsuyama(img_array: np.ndarray) -> np.ndarray:
+    """
+    Filtro de Nagao e Matsuyama.
+    Usa 9 regiões poligonais (formato de "casas") contendo 7 pixels cada, 
+    abrangendo as laterais, cantos e o centro.
+    """
+    coords = [
+        [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3), (3,1), (3,2), (3,3)], # Centro (9 pixels)
+        [(0,1), (0,2), (0,3), (1,1), (1,2), (1,3), (2,2)], # Topo
+        [(4,1), (4,2), (4,3), (3,1), (3,2), (3,3), (2,2)], # Baixo
+        [(1,0), (2,0), (3,0), (1,1), (2,1), (3,1), (2,2)], # Esquerda
+        [(1,4), (2,4), (3,4), (1,3), (2,3), (3,3), (2,2)], # Direita
+        [(0,0), (0,1), (1,0), (1,1), (0,2), (2,0), (2,2)], # Canto Superior Esquerdo
+        [(0,4), (0,3), (1,4), (1,3), (0,2), (2,4), (2,2)], # Canto Superior Direito
+        [(4,0), (4,1), (3,0), (3,1), (4,2), (2,0), (2,2)], # Canto Inferior Esquerdo
+        [(4,4), (4,3), (3,4), (3,3), (4,2), (2,4), (2,2)]  # Canto Inferior Direito
+    ]
+    
+    mascaras = []
+    for coord_list in coords:
+        m = np.zeros((5, 5), dtype=bool)
+        for y, x in coord_list: m[y, x] = True
+        mascaras.append(m)
+        
+    return _aplicar_filtro_variancia(img_array, mascaras)
+
+def filtro_somboonkaew(img_array: np.ndarray) -> np.ndarray:
+    """
+    Filtro de Somboonkaew.
+    Usa 8 regiões direcionais (fatias) partindo do centro apontando para as extremidades.
+    """
+    coords = [
+        [(2,2), (1,2), (0,2), (0,1), (0,3)], # Norte
+        [(2,2), (3,2), (4,2), (4,1), (4,3)], # Sul
+        [(2,2), (2,1), (2,0), (1,0), (3,0)], # Oeste
+        [(2,2), (2,3), (2,4), (1,4), (3,4)], # Leste
+        [(2,2), (1,1), (0,0), (0,1), (1,0)], # Noroeste
+        [(2,2), (1,3), (0,4), (0,3), (1,4)], # Nordeste
+        [(2,2), (3,1), (4,0), (4,1), (3,0)], # Sudoeste
+        [(2,2), (3,3), (4,4), (4,3), (3,4)]  # Sudeste
+    ]
+    
+    mascaras = []
+    for coord_list in coords:
+        m = np.zeros((5, 5), dtype=bool)
+        for y, x in coord_list: m[y, x] = True
+        mascaras.append(m)
+        
+    return _aplicar_filtro_variancia(img_array, mascaras)
