@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import stats
+from scipy.signal import convolve2d
 
 def _deslizar_janela(img_array: np.ndarray, kernel_size: int, operacao) -> np.ndarray:
     """
@@ -110,6 +111,7 @@ def _aplicar_filtro_variancia(img_array: np.ndarray, mascaras: list) -> np.ndarr
 # =========================================================================
 # FILTROS PASSA-BAIXA (PRESERVAÇÃO DE BORDAS)
 # =========================================================================
+
 def filtro_kuwahara(img_array: np.ndarray) -> np.ndarray:
     """
     Filtro de Kuwahara (ou Kawahara).
@@ -198,3 +200,76 @@ def filtro_somboonkaew(img_array: np.ndarray) -> np.ndarray:
         mascaras.append(m)
         
     return _aplicar_filtro_variancia(img_array, mascaras)
+
+# =========================================================================
+# FILTROS PASSA-ALTA (REALCE DE DETALHES)
+# =========================================================================
+
+def obter_mascara_passa_alta(tipo: str) -> np.ndarray:
+    """
+    Retorna o kernel 3x3 correspondente ao filtro passa-alta solicitado.
+    (Nota: Se os slides do professor tiverem números diferentes para M1, M2 ou M3, 
+    basta alterar os números nestas matrizes!)
+    """
+    mascaras = {
+        'H1': np.array([
+            [ 0, -1,  0],
+            [-1,  4, -1],
+            [ 0, -1,  0]
+        ]),
+        
+        'H2': np.array([
+            [-1, -1, -1],
+            [-1,  8, -1],
+            [-1, -1, -1]
+        ]),
+        
+        # M1, M2 e M3 costumam ser variações direcionais ou de ênfase
+        'M1': np.array([
+            [-1, -1, -1],
+            [-1,  9, -1],
+            [-1, -1, -1]
+        ]), # Deteção de linhas horizontais
+        
+        'M2': np.array([
+            [1, -2,  1],
+            [-2, 5, -2],
+            [1,  -2, 1]
+        ]), # Deteção de linhas verticais
+        
+        'M3': np.array([
+            [0, -1, 0],
+            [-1,  5, -1],
+            [0, -1, 0]
+        ])  # Deteção de linhas diagonais
+    }
+    
+    tipo = tipo.upper()
+    if tipo not in mascaras:
+        raise ValueError(f"Máscara {tipo} desconhecida.")
+        
+    return mascaras[tipo]
+
+
+def aplicar_filtro_passa_alta(img_array: np.ndarray, tipo: str) -> np.ndarray:
+    """
+    Aplica a convolução 2D de um filtro passa-alta sobre a imagem.
+    """
+    # 1. Obter a máscara desejada
+    kernel = obter_mascara_passa_alta(tipo)
+    
+    # 2. Garantir que a imagem está num formato que suporte números negativos
+    img_float = img_array.astype(np.float64)
+    
+    # 3. Aplicar a Convolução Verdadeira
+    # mode='same' garante que a imagem de saída tem o mesmo tamanho da original
+    # boundary='symm' resolve o problema das bordas espelhando os píxeis
+    img_conv = convolve2d(img_float, kernel, mode='same', boundary='symm')
+    
+    # 4. Tratar os valores negativos gerados pelas transições de borda
+    img_abs = np.abs(img_conv)
+    
+    # 5. Normalizar/Cortar para o intervalo visível (0-255)
+    img_final = np.clip(img_abs, 0, 255).astype(np.uint8)
+    
+    return img_final
