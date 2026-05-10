@@ -368,3 +368,95 @@ def pontilhado_ordenado_3x3(img_array: np.ndarray) -> np.ndarray:
         [5, 2, 7]
     ])
     return _aplicar_pontilhado_ordenado(img_array, D)
+
+# =========================================================================
+# HELPER PARA DIFUSÃO DE ERRO
+# =========================================================================
+def _aplicar_difusao_erro(img_array: np.ndarray, vizinhos: list, divisor: float) -> np.ndarray:
+    """
+    Função base para a Difusão de Erro.
+    vizinhos: Lista de tuplos (Deslocamento_Y, Deslocamento_X, Peso_do_Erro)
+    divisor: O valor pelo qual o peso será dividido para gerar a fração.
+    """
+    # Converter para float64 é vital, pois os píxeis vão acumular erros 
+    # e podem ficar negativos ou passar de 255 durante o processo intermediário!
+    img_float = img_array.astype(np.float64)
+    linhas, colunas = img_float.shape
+    
+    img_saida = np.zeros((linhas, colunas), dtype=np.uint8)
+
+    # Varredura Sequencial (Esquerda -> Direita, Cima -> Baixo)
+    for y in range(linhas):
+        for x in range(colunas):
+            
+            # 1. Limiarização
+            pixel_antigo = img_float[y, x]
+            pixel_novo = 255 if pixel_antigo >= 128 else 0
+            img_saida[y, x] = pixel_novo
+            
+            # 2. Calcula o Erro
+            erro = pixel_antigo - pixel_novo
+            
+            # 3. Distribui o Erro para os vizinhos que ainda não foram processados
+            for dy, dx, peso in vizinhos:
+                ny, nx = y + dy, x + dx
+                
+                # Só difunde se o vizinho estiver dentro dos limites da imagem
+                if 0 <= ny < linhas and 0 <= nx < colunas:
+                    img_float[ny, nx] += erro * (peso / divisor)
+
+    return img_saida
+
+# =========================================================================
+# MEIOS-TONS: PONTILHADO COM DIFUSÃO DE ERRO
+# =========================================================================
+
+def difusao_floyd_steinberg(img_array: np.ndarray) -> np.ndarray:
+    """O clássico de 1976. Espalha o erro para 4 vizinhos (divisor 16)."""
+    vizinhos = [
+        (0, 1, 7),  # Direita
+        (1, -1, 3), # Diagonal Inferior Esquerda
+        (1, 0, 5),  # Baixo
+        (1, 1, 1)   # Diagonal Inferior Direita
+    ]
+    return _aplicar_difusao_erro(img_array, vizinhos, divisor=16.0)
+
+def difusao_rogers(img_array: np.ndarray) -> np.ndarray:
+    """Filtro de Rogers. Mais simples, espalha para 3 vizinhos (divisor 8)."""
+    vizinhos = [
+        (0, 1, 3), # Direita
+        (1, 0, 3), # Baixo
+        (1, 1, 2)  # Diagonal Inferior Direita
+    ]
+    return _aplicar_difusao_erro(img_array, vizinhos, divisor=8.0)
+
+def difusao_jarvis_judice_ninke(img_array: np.ndarray) -> np.ndarray:
+    """Filtro JJN. Matriz enorme, espalha até 2 casas de distância (divisor 48)."""
+    vizinhos = [
+        (0, 1, 7), (0, 2, 5),
+        (1, -2, 3), (1, -1, 5), (1, 0, 7), (1, 1, 5), (1, 2, 3),
+        (2, -2, 1), (2, -1, 3), (2, 0, 5), (2, 1, 3), (2, 2, 1)
+    ]
+    return _aplicar_difusao_erro(img_array, vizinhos, divisor=48.0)
+
+def difusao_stucki(img_array: np.ndarray) -> np.ndarray:
+    """Filtro de Stucki. Rápido e gera contornos muito nítidos (divisor 42)."""
+    vizinhos = [
+        (0, 1, 8), (0, 2, 4),
+        (1, -2, 2), (1, -1, 4), (1, 0, 8), (1, 1, 4), (1, 2, 2),
+        (2, -2, 1), (2, -1, 2), (2, 0, 4), (2, 1, 2), (2, 2, 1)
+    ]
+    return _aplicar_difusao_erro(img_array, vizinhos, divisor=42.0)
+
+def difusao_stevenson_arce(img_array: np.ndarray) -> np.ndarray:
+    """
+    Filtro de Stevenson & Arce. 
+    O mais exótico! Simula uma grelha hexagonal, "pulando" píxeis (divisor 200).
+    """
+    vizinhos = [
+        (0, 2, 32),
+        (1, -3, 12), (1, -1, 26), (1, 1, 30), (1, 3, 16),
+        (2, -2, 12), (2, 0, 26), (2, 2, 12),
+        (3, -3, 5),  (3, -1, 12), (3, 1, 12), (3, 3, 5)
+    ]
+    return _aplicar_difusao_erro(img_array, vizinhos, divisor=200.0)
