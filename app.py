@@ -11,7 +11,7 @@ from PIL import Image, ImageTk
 import os
 
 from impl import C1, C2, C3
-from impl.unid2 import realce
+from impl.unid2 import realce, filtering
 
 # ─────────────────────────────────────────────
 #  PALETA E FONTES
@@ -24,6 +24,7 @@ ACCENT    = "#58a6ff"
 ACCENT2   = "#3fb950"
 ACCENT3   = "#f78166"
 ACCENT4   = "#d73a49"
+ACCENT5   = "#a31515"
 TEXT_PRI  = "#e6edf3"
 TEXT_SEC  = "#8b949e"
 TEXT_DIM  = "#484f58"
@@ -1008,6 +1009,269 @@ class AbaRealce(BasePage):
         plt.close(fig) # Fecha a figura para não consumir memória
         return res_array
 
+class AbaFiltragem(BasePage):
+    """
+    Aba dedicada à Filtragem Espacial e Meios-Tons.
+    """
+    def __init__(self, parent, app):
+        super().__init__(parent)
+        self.app = app
+        inner = self.scrollable()
+        self._img = None
+        self._build(inner)
+
+    def _build(self, p):
+        pad = dict(padx=20, pady=4, anchor="w")
+        section_title(p, "Módulo de Filtragem Espacial e Halftoning")
+
+        self._sel = ImageSelector(p, "Imagem", on_load=self._on_img_load)
+        self._sel.pack(**pad, fill="x")
+
+        # ── 1. Filtros Passa-Baixa (Suavização e Morfologia) ──
+        section_title(p, "1 — Filtros Passa-Baixa (Suavização e Morfologia)")
+        pb_ctrl = tk.Frame(p, bg=BG_PANEL)
+        pb_ctrl.pack(**pad)
+        
+        self._cb_pb = make_combobox(pb_ctrl, ["Média", "Mediana", "Máximo", "Mínimo", "Moda"], width=15)
+        self._cb_pb.pack(side="left", padx=(0, 10))
+        
+        tk.Label(pb_ctrl, text="Kernel:", bg=BG_PANEL, fg="white").pack(side="left")
+        self._cb_kernel = make_combobox(pb_ctrl, ["3", "5", "7", "9"], width=5)
+        self._cb_kernel.current(0) # Padrão 3x3
+        self._cb_kernel.pack(side="left", padx=5)
+        
+        make_button(pb_ctrl, "Aplicar", self._run_passa_baixa).pack(side="left", padx=10)
+        
+        self._pb_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._pb_res_frm.pack(padx=20, pady=4)
+
+        # ── 2. Filtros Passa-Baixa (Preservação de Bordas) ──
+        section_title(p, "2 — Filtros de Preservação de Bordas (Janela 5x5)")
+        pres_ctrl = tk.Frame(p, bg=BG_PANEL)
+        pres_ctrl.pack(**pad)
+        
+        self._cb_pres = make_combobox(pres_ctrl, ["Kuwahara", "Tomita e Tsuji", "Nagao e Matsuyama", "Somboonkaew"], width=20)
+        self._cb_pres.pack(side="left", padx=(0, 10))
+        
+        make_button(pres_ctrl, "Aplicar", self._run_preservacao).pack(side="left")
+        
+        self._pres_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._pres_res_frm.pack(padx=20, pady=4)
+
+        # ── 3. Filtros Passa-Alta ──
+        section_title(p, "3 — Filtros Passa-Alta (Detenção de Bordas)")
+        pa_ctrl = tk.Frame(p, bg=BG_PANEL)
+        pa_ctrl.pack(**pad)
+        
+        self._cb_pa = make_combobox(pa_ctrl, ["H1", "H2", "M1", "M2", "M3"], width=10)
+        self._cb_pa.pack(side="left", padx=(0, 10))
+        
+        make_button(pa_ctrl, "Aplicar Máscara", self._run_passa_alta).pack(side="left")
+        
+        self._pa_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._pa_res_frm.pack(padx=20, pady=4)
+
+        # ── 4 — Alto-Reforço (High-Boost) ──
+        section_title(p, "4 — Alto-Reforço (High-Boost)")
+        hb_ctrl = tk.Frame(p, bg=BG_PANEL)
+        hb_ctrl.pack(**pad)
+        
+        # Variável para controlar o tempo real
+        self._auto_hb = tk.BooleanVar(value=False)
+
+        tk.Label(hb_ctrl, text="Fator A:", bg=BG_PANEL, fg="white").pack(side="left")
+        
+        # Slider atualizado com o comando de mudança
+        self._scale_a = tk.Scale(hb_ctrl, from_=1.0, to=3.0, resolution=0.1, orient="horizontal", 
+                                 bg=BG_PANEL, fg="white", highlightthickness=0, length=200,
+                                 command=self._on_hb_slider_change)
+        self._scale_a.set(1.2)
+        self._scale_a.pack(side="left", padx=10)
+        
+        # Botões e Checkbox alinhados na horizontal
+        make_button(hb_ctrl, "Aplicar", self._run_alto_reforco).pack(side="left", padx=5)
+        make_button(hb_ctrl, "Resetar", self._resetar_alto_reforco).pack(side="left", padx=5)
+        
+        chk_auto_hb = tk.Checkbutton(hb_ctrl, text="Tempo real", variable=self._auto_hb, 
+                                     bg=BG_PANEL, fg="white", selectcolor=BG_DARK, 
+                                     activebackground=BG_PANEL, activeforeground="white")
+        chk_auto_hb.pack(side="left", padx=5)
+        
+        self._hb_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._hb_res_frm.pack(padx=20, pady=4)
+
+        # ── 5. Meios-Tons: Pontilhado Ordenado ──
+        section_title(p, "5 — Meios-Tons: Pontilhado Ordenado")
+        po_ctrl = tk.Frame(p, bg=BG_PANEL)
+        po_ctrl.pack(**pad)
+        
+        self._cb_po = make_combobox(po_ctrl, ["2x2", "2x3", "3x3"], width=10)
+        self._cb_po.pack(side="left", padx=(0, 10))
+        make_button(po_ctrl, "Gerar Pontilhado", self._run_pontilhado_ordenado).pack(side="left")
+        
+        self._po_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._po_res_frm.pack(padx=20, pady=4)
+
+        # ── 6. Meios-Tons: Difusão de Erro ──
+        section_title(p, "6 — Meios-Tons: Difusão de Erro")
+        dif_ctrl = tk.Frame(p, bg=BG_PANEL)
+        dif_ctrl.pack(**pad)
+        
+        self._cb_dif = make_combobox(dif_ctrl, [
+            "Floyd e Steinberg", "Rogers", "Jarvis, Judice & Ninke", "Stucki", "Stevenson e Arce"
+        ], width=25)
+        self._cb_dif.pack(side="left", padx=(0, 10))
+        make_button(dif_ctrl, "Processar Difusão", self._run_difusao).pack(side="left")
+        
+        tk.Label(dif_ctrl, text="(Atenção: Processo sequencial lento)", bg=BG_PANEL, fg=TEXT_SEC, font=("Courier New", 8)).pack(side="left", padx=10)
+        
+        self._dif_res_frm = tk.Frame(p, bg=BG_PANEL)
+        self._dif_res_frm.pack(padx=20, pady=4)
+
+    # =========================================================================
+    # Utilitários Visuais
+    # =========================================================================
+
+    def _on_img_load(self, arr, _path):
+        self._img = arr
+        # Limpar todos os frames de resultado ao carregar uma nova imagem
+        frms = [self._pb_res_frm, self._pres_res_frm, self._pa_res_frm, 
+                self._hb_res_frm, self._po_res_frm, self._dif_res_frm]
+        for frm in frms:
+            for w in frm.winfo_children(): w.destroy()
+
+    def _get_gray_img(self):
+        """Converte de forma segura para tons de cinzento."""
+        if self._img is None:
+            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
+            return None
+        if len(self._img.shape) == 3:
+            return np.array(Image.fromarray(self._img).convert("L"))
+        return self._img
+
+    def _show_grid(self, parent, arrays_titles, cols=4, max_w=230, max_h=200):
+        for widget in parent.winfo_children(): widget.destroy()
+        for i, (arr, title) in enumerate(arrays_titles):
+            frm, lbl_img, lbl_info = image_card(parent, title)
+            row, col = i // cols, i % cols
+            frm.grid(row=row, column=col, padx=5, pady=4, sticky="n")
+            show_array_in_label(arr, lbl_img, lbl_info, max_w, max_h)
+
+    # =========================================================================
+    # Callbacks (Ligação com o filtering.py)
+    # =========================================================================
+
+    def _run_passa_baixa(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        tipo = self._cb_pb.get()
+        k = int(self._cb_kernel.get())
+        
+        mapa_filtros = {
+            "Média": filtering.filtro_media,
+            "Mediana": filtering.filtro_mediana,
+            "Máximo": filtering.filtro_maximo,
+            "Mínimo": filtering.filtro_minimo,
+            "Moda": filtering.filtro_moda
+        }
+        
+        try:
+            res = mapa_filtros[tipo](arr, kernel_size=k)
+            self._show_grid(self._pb_res_frm, [(arr, "Original"), (res, f"{tipo} ({k}x{k})")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_preservacao(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        tipo = self._cb_pres.get()
+        mapa_pres = {
+            "Kuwahara": filtering.filtro_kuwahara,
+            "Tomita e Tsuji": filtering.filtro_tomita_tsuji,
+            "Nagao e Matsuyama": filtering.filtro_nagao_matsuyama,
+            "Somboonkaew": filtering.filtro_somboonkaew
+        }
+        
+        try:
+            res = mapa_pres[tipo](arr)
+            self._show_grid(self._pres_res_frm, [(arr, "Original"), (res, f"{tipo}")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_passa_alta(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        tipo = self._cb_pa.get()
+        try:
+            res = filtering.aplicar_filtro_passa_alta(arr, tipo)
+            self._show_grid(self._pa_res_frm, [(arr, "Original"), (res, f"Máscara {tipo}")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _on_hb_slider_change(self, *args):
+        """Callback para atualização automática do High-Boost."""
+        if hasattr(self, '_auto_hb') and self._auto_hb.get() and self._img is not None:
+            self._run_alto_reforco()
+
+    def _resetar_alto_reforco(self):
+        """Reseta o fator A para o padrão de 1.2."""
+        self._scale_a.set(1.2)
+        # Se o tempo real estiver ativo, o .set() já dispara a atualização
+
+    def _run_alto_reforco(self, *args):
+        """Executa o filtro de Alto-Reforço."""
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        a_val = self._scale_a.get()
+        try:
+            res = filtering.filtro_alto_reforco(arr, A=a_val)
+            self._show_grid(self._hb_res_frm, [(arr, "Original"), (res, f"High-Boost (A={a_val})")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_pontilhado_ordenado(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        tipo = self._cb_po.get()
+        mapa_po = {
+            "2x2": filtering.pontilhado_ordenado_2x2,
+            "2x3": filtering.pontilhado_ordenado_2x3,
+            "3x3": filtering.pontilhado_ordenado_3x3
+        }
+        
+        try:
+            res = mapa_po[tipo](arr)
+            self._show_grid(self._po_res_frm, [(arr, "Original"), (res, f"Ordenado {tipo}")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_difusao(self):
+        arr = self._get_gray_img()
+        if arr is None: return
+        
+        tipo = self._cb_dif.get()
+        mapa_dif = {
+            "Floyd e Steinberg": filtering.difusao_floyd_steinberg,
+            "Rogers": filtering.difusao_rogers,
+            "Jarvis, Judice & Ninke": filtering.difusao_jarvis_judice_ninke,
+            "Stucki": filtering.difusao_stucki,
+            "Stevenson e Arce": filtering.difusao_stevenson_arce
+        }
+        
+        # Como o processo demora, forçamos o update da interface para evitar que o botão pareça "congelado"
+        self.app.update_idletasks()
+        
+        try:
+            res = mapa_dif[tipo](arr)
+            self._show_grid(self._dif_res_frm, [(arr, "Original"), (res, f"Difusão: {tipo}")])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
 
 # ─────────────────────────────────────────────
 #  JANELA PRINCIPAL
@@ -1049,7 +1313,8 @@ class App(tk.Tk):
             "C1": PageC1(self._content),
             "C2": PageC2(self._content),
             "C3": PageC3(self._content),
-            "Realce": AbaRealce(self._content)
+            "Realce": AbaRealce(self._content),
+            "Filtragem": AbaFiltragem(self._content, self)
         }
         for page in self._pages.values():
             page.place(relwidth=1, relheight=1)
@@ -1062,7 +1327,8 @@ class App(tk.Tk):
             ("C1", "Aritmética\n& Lógica",       ACCENT),
             ("C2", "Transformações\nGeométricas", ACCENT2),
             ("C3", "Espaços de Cor\n& Pseudocor", ACCENT3),
-            ("Realce", "Realce", ACCENT4)
+            ("Realce", "Realce", ACCENT4),
+            ("Filtragem", "Filtragem\nEspacial", ACCENT5)
         ]
 
         self._menu_btns = {}
