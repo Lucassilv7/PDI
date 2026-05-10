@@ -300,3 +300,71 @@ def filtro_alto_reforco(img_array: np.ndarray, A: float) -> np.ndarray:
     img_final = np.clip(img_boost, 0, 255).astype(np.uint8)
     
     return img_final
+
+# =========================================================================
+# HELPER PARA MEIOS-TONS (HALFTONING)
+# =========================================================================
+def _aplicar_pontilhado_ordenado(img_array: np.ndarray, matriz_d: np.ndarray) -> np.ndarray:
+    """
+    Função base que recebe uma matriz de dispersão (D), normaliza para a escala 
+    de 0 a 255, replica pela imagem toda (tile) e aplica a limiarização.
+    """
+    N = matriz_d.size
+    # Normaliza a matriz original para criar os Limiares (T) no intervalo de 0 a 255
+    T = (matriz_d + 0.5) * (255.0 / float(N))
+
+    linhas, colunas = img_array.shape
+    
+    # Descobre quantas vezes a matriz cabe na imagem (arredondando para cima)
+    reps_lin = int(np.ceil(linhas / T.shape[0]))
+    reps_col = int(np.ceil(colunas / T.shape[1]))
+    
+    # Replica a matriz T pela imagem e corta o excesso para ficar do tamanho exato
+    T_expandida = np.tile(T, (reps_lin, reps_col))
+    T_expandida = T_expandida[:linhas, :colunas]
+
+    # Aplica a condição: Se Píxel_Original > Limiar_da_Matriz vira 255, senão 0.
+    img_binaria = np.where(img_array > T_expandida, 255, 0).astype(np.uint8)
+    
+    return img_binaria
+
+
+# =========================================================================
+# MEIOS-TONS: PONTILHADO ORDENADO (ORDERED DITHERING)
+# =========================================================================
+
+def pontilhado_ordenado_2x2(img_array: np.ndarray) -> np.ndarray:
+    """
+    Aplica o Pontilhado Ordenado usando uma matriz de Bayer clássica 2x2.
+    Gera 4 níveis de intensidade visual.
+    """
+    D = np.array([
+        [0, 2],
+        [3, 1]
+    ])
+    return _aplicar_pontilhado_ordenado(img_array, D)
+
+
+def pontilhado_ordenado_2x3(img_array: np.ndarray) -> np.ndarray:
+    """
+    Aplica o Pontilhado Ordenado usando uma matriz customizada 2x3.
+    Gera 6 níveis de intensidade visual.
+    """
+    D = np.array([
+        [3, 0, 4],
+        [5, 2, 1]
+    ])
+    return _aplicar_pontilhado_ordenado(img_array, D)
+
+
+def pontilhado_ordenado_3x3(img_array: np.ndarray) -> np.ndarray:
+    """
+    Aplica o Pontilhado Ordenado usando uma matriz de Bayer clássica 3x3.
+    Gera 9 níveis de intensidade visual, permitindo degradês mais suaves.
+    """
+    D = np.array([
+        [6, 8, 4],
+        [1, 0, 3],
+        [5, 2, 7]
+    ])
+    return _aplicar_pontilhado_ordenado(img_array, D)
