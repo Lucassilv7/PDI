@@ -273,3 +273,30 @@ def aplicar_filtro_passa_alta(img_array: np.ndarray, tipo: str) -> np.ndarray:
     img_final = np.clip(img_abs, 0, 255).astype(np.uint8)
     
     return img_final
+
+def filtro_alto_reforco(img_array: np.ndarray, A: float) -> np.ndarray:
+    """
+    Aplica o filtro de Alto-Reforço (High-Boost).
+    A: Fator de amplificação. (A=1 resulta num passa-alta puro. A>1 gera nitidez).
+    """
+    # 1. Converte para float para evitar cortes na matemática com negativos
+    img_float = img_array.astype(np.float64)
+    
+    # 2. Prepara o kernel Passa-Alta (Laplaciano Completo / H2)
+    kernel_h2 = np.array([
+        [-1, -1, -1],
+        [-1,  8, -1],
+        [-1, -1, -1]
+    ])
+    
+    # 3. Extrai as bordas (Passa-Alta)
+    img_bordas = convolve2d(img_float, kernel_h2, mode='same', boundary='symm')
+    
+    # 4. Aplica a fórmula mágica do High-Boost
+    # Resultado = (A - 1) * Original + Passa_Alta
+    img_boost = ((A - 1.0) * img_float) + img_bordas
+    
+    # 5. Corta para manter os pixels na escala digital (0 a 255)
+    img_final = np.clip(img_boost, 0, 255).astype(np.uint8)
+    
+    return img_final
