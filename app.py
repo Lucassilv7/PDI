@@ -1400,6 +1400,11 @@ class AbaSegmentacao(BasePage):
 
     def _on_img(self, arr, _path=None):
         self._img = arr
+        # Atualiza o canvas clicável de sementes sempre que uma nova imagem é carregada
+        if hasattr(self, "_canvas_reg"):
+            self._sementes_pixels.clear()
+            self._render_canvas_img()
+            self._atualizar_lbl_sementes()
 
     def _check(self):
         if self._img is None:
@@ -1427,23 +1432,32 @@ class AbaSegmentacao(BasePage):
     # ─────────────────────────────────────────
     def _build_pontos(self, p, pad):
         section_title(p, "1 — Detecção de Pontos")
-        frm = tk.Frame(p, bg=BG_PANEL); frm.pack(**pad)
-        tk.Label(frm, text="T (limiar):", fg=TEXT_SEC, bg=BG_PANEL,
-                 font=FONT_LABEL).grid(row=0, column=0, padx=(0, 4))
-        self._T_ponto = make_entry(frm, width=6); self._T_ponto.insert(0, "50")
-        self._T_ponto.grid(row=0, column=1, padx=4)
-        make_button(frm, "Detectar", self._run_pontos).grid(row=0, column=2, padx=8)
+
+        ctrl = tk.Frame(p, bg=BG_PANEL); ctrl.pack(**pad)
+        self._scale_ponto = tk.Scale(
+            ctrl, from_=0, to=255, orient="horizontal", label="T (limiar)",
+            bg=BG_PANEL, fg="white", highlightthickness=0, length=260,
+            command=self._on_ponto_slider
+        )
+        self._scale_ponto.set(50)
+        self._scale_ponto.pack(side="left")
 
         self._frm_pontos = tk.Frame(p, bg=BG_PANEL); self._frm_pontos.pack(padx=20, pady=4)
 
-    def _run_pontos(self):
-        if not self._check(): return
+    def _on_ponto_slider(self, _value=None):
+        """Atualiza detecção de pontos em tempo real conforme o slider move."""
+        if self._img is None:
+            return
         try:
-            T = float(self._T_ponto.get())
+            T = self._scale_ponto.get()
             res = self._seg.points_detection(self._img, T)
-            self._two_cards(self._frm_pontos, self._img, res, "Pontos detectados")
-        except Exception as e:
-            messagebox.showerror("Erro", str(e))
+            self._two_cards(self._frm_pontos, self._img, res,
+                            f"Pontos detectados  (T={T})")
+        except Exception:
+            pass
+
+    def _run_pontos(self):
+        self._on_ponto_slider()
 
     # ─────────────────────────────────────────
     #  2 — Detecção de Retas
@@ -1564,62 +1578,178 @@ class AbaSegmentacao(BasePage):
     def _build_regioes(self, p, pad):
         section_title(p, "5 — Segmentação por Regiões")
 
-        # ── Crescimento ──
+        # ── Crescimento de Região ──
         tk.Label(p, text="Crescimento de Região", fg=ACCENT2,
                  bg=BG_PANEL, font=FONT_LABEL).pack(**pad)
 
-        frm_s = tk.Frame(p, bg=BG_PANEL); frm_s.pack(**pad)
-        tk.Label(frm_s, text="Sementes (y,x):", fg=TEXT_SEC,
-                 bg=BG_PANEL, font=FONT_LABEL).grid(row=0, column=0)
-        self._sementes_entry = make_entry(frm_s, width=30)
-        self._sementes_entry.insert(0, "50,50  100,200")
-        self._sementes_entry.grid(row=0, column=1, padx=6)
-        tk.Label(frm_s, text="T:", fg=TEXT_SEC, bg=BG_PANEL,
-                 font=FONT_LABEL).grid(row=0, column=2)
-        self._T_reg = make_entry(frm_s, width=5); self._T_reg.insert(0, "20")
-        self._T_reg.grid(row=0, column=3, padx=4)
-        make_button(frm_s, "Crescer regiões", self._run_regioes,
-                    color=ACCENT2).grid(row=0, column=4, padx=8)
+        # Controles: T + botões
+        frm_ctrl = tk.Frame(p, bg=BG_PANEL); frm_ctrl.pack(**pad)
 
-        tk.Label(p, text="  Formato das sementes: y1,x1  y2,x2  y3,x3 ...",
-                 fg=TEXT_DIM, bg=BG_PANEL, font=FONT_MONO).pack(anchor="w", padx=20)
+        tk.Label(frm_ctrl, text="T (limiar):", fg=TEXT_SEC,
+                 bg=BG_PANEL, font=FONT_LABEL).grid(row=0, column=0, padx=(0, 4))
+        self._scale_reg = tk.Scale(
+            frm_ctrl, from_=0, to=100, orient="horizontal",
+            bg=BG_PANEL, fg="white", highlightthickness=0, length=200,
+        )
+        self._scale_reg.set(20)
+        self._scale_reg.grid(row=0, column=1, padx=(0, 12))
 
-        self._frm_regioes = tk.Frame(p, bg=BG_PANEL)
-        self._frm_regioes.pack(padx=20, pady=4)
+        make_button(frm_ctrl, "Limpar sementes", self._limpar_sementes,
+                    color=ACCENT3).grid(row=0, column=2, padx=4)
+        make_button(frm_ctrl, "▶ Calcular regiões", self._run_regioes,
+                    color=ACCENT2).grid(row=0, column=3, padx=4)
+
+        # Dica de uso
+        tk.Label(p, text="  Clique na imagem para adicionar sementes. Clique com botão direito para remover a última.",
+                 fg=TEXT_DIM, bg=BG_PANEL, font=FONT_MONO).pack(anchor="w", padx=20, pady=(0, 4))
+
+        # Frame com canvas clicavel (esquerda) + resultado (direita)
+        frm_painel = tk.Frame(p, bg=BG_PANEL); frm_painel.pack(padx=20, pady=4, anchor="w")
+
+        # -- Lado esquerdo: canvas da imagem --
+        frm_canvas = tk.Frame(frm_painel, bg=BG_CARD,
+                               highlightthickness=1, highlightbackground=BORDER)
+        frm_canvas.grid(row=0, column=0, padx=(0, 10), sticky="n")
+
+        tk.Label(frm_canvas, text="Clique para adicionar sementes",
+                 fg=TEXT_SEC, bg=BG_CARD, font=FONT_MONO).pack(pady=(6, 2))
+
+        self._CANVAS_W = 320
+        self._CANVAS_H = 260
+        self._canvas_reg = tk.Canvas(
+            frm_canvas, width=self._CANVAS_W, height=self._CANVAS_H,
+            bg=BG_DARK, bd=0, highlightthickness=0, cursor="crosshair"
+        )
+        self._canvas_reg.pack(padx=6, pady=4)
+
+        self._lbl_sementes_info = tk.Label(
+            frm_canvas, text="Sementes: nenhuma", fg=ACCENT2,
+            bg=BG_CARD, font=FONT_MONO
+        )
+        self._lbl_sementes_info.pack(pady=(0, 6))
+
+        # -- Lado direito: resultado --
+        frm_res = tk.Frame(frm_painel, bg=BG_CARD,
+                            highlightthickness=1, highlightbackground=BORDER)
+        frm_res.grid(row=0, column=1, sticky="n")
+
+        tk.Label(frm_res, text="Resultado", fg=TEXT_SEC,
+                 bg=BG_CARD, font=FONT_MONO).pack(pady=(6, 2))
+        self._lbl_reg_res = tk.Label(frm_res, bg=BG_CARD,
+                                      width=self._CANVAS_W, height=self._CANVAS_H)
+        self._lbl_reg_res.pack(padx=6, pady=4)
+        self._lbl_reg_info = tk.Label(frm_res, text="—", fg=TEXT_DIM,
+                                       bg=BG_CARD, font=FONT_MONO)
+        self._lbl_reg_info.pack(pady=(0, 6))
+
+        # Estado interno do canvas clicavel
+        self._sementes_pixels  = []   # coordenadas na imagem original
+        self._canvas_img_scale = 1.0  # fator de escala imagem→canvas
+        self._canvas_ph        = None # referência PhotoImage no canvas
+
+        # Eventos de clique
+        self._canvas_reg.bind("<Button-1>",   self._canvas_click)
+        self._canvas_reg.bind("<Button-3>",   self._canvas_remove_last)
 
         # ── Watershed ──
         tk.Label(p, text="Watershed", fg=ACCENT2,
-                 bg=BG_PANEL, font=FONT_LABEL).pack(**{**pad, "pady": (12, 4)})
+                 bg=BG_PANEL, font=FONT_LABEL).pack(**{**pad, "pady": (14, 4)})
         make_button(p, "▶ Executar Watershed", self._run_watershed,
                     color=ACCENT3).pack(padx=20, anchor="w")
 
         self._frm_watershed = tk.Frame(p, bg=BG_PANEL)
-        self._frm_watershed.pack(padx=20, pady=6)
+        self._frm_watershed.pack(padx=20, pady=4)
+
+    # ── Canvas clicavel helpers ──────────────────────────────
+    def _render_canvas_img(self):
+        """
+        Desenha a imagem atual no canvas de sementes, escalada para caber.
+        Redesenha os marcadores de semente por cima.
+        """
+        if self._img is None:
+            return
+        from PIL import Image as PILImage
+        img_h, img_w = self._img.shape[:2]
+        scale = min(self._CANVAS_W / img_w, self._CANVAS_H / img_h)
+        self._canvas_img_scale = scale
+        disp_w = int(img_w * scale)
+        disp_h = int(img_h * scale)
+
+        pil = PILImage.fromarray(self._img.astype(np.uint8))
+        pil = pil.resize((disp_w, disp_h), PILImage.LANCZOS)
+        self._canvas_ph = ImageTk.PhotoImage(pil)
+
+        self._canvas_reg.config(width=disp_w, height=disp_h)
+        self._canvas_reg.delete("all")
+        self._canvas_reg.create_image(0, 0, anchor="nw", image=self._canvas_ph)
+        self._canvas_img_offset = ((self._CANVAS_W - disp_w) // 2,
+                                    (self._CANVAS_H - disp_h) // 2)
+        # Redesenha marcadores
+        for (sy, sx) in self._sementes_pixels:
+            cx = int(sx * scale)
+            cy = int(sy * scale)
+            r = 5
+            self._canvas_reg.create_oval(cx-r, cy-r, cx+r, cy+r,
+                                          outline=ACCENT2, fill="", width=2)
+            self._canvas_reg.create_oval(cx-1, cy-1, cx+1, cy+1,
+                                          outline=ACCENT2, fill=ACCENT2)
+
+    def _canvas_click(self, event):
+        """Registra semente na coordenada clicada e atualiza display."""
+        if self._img is None:
+            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
+            return
+        scale = self._canvas_img_scale
+        img_h, img_w = self._img.shape[:2]
+        sx = int(event.x / scale)
+        sy = int(event.y / scale)
+        sx = max(0, min(sx, img_w - 1))
+        sy = max(0, min(sy, img_h - 1))
+        self._sementes_pixels.append((sy, sx))
+        self._render_canvas_img()
+        self._atualizar_lbl_sementes()
+
+    def _canvas_remove_last(self, _event=None):
+        """Remove a última semente com botão direito."""
+        if self._sementes_pixels:
+            self._sementes_pixels.pop()
+            self._render_canvas_img()
+            self._atualizar_lbl_sementes()
+
+    def _limpar_sementes(self):
+        self._sementes_pixels.clear()
+        self._render_canvas_img()
+        self._atualizar_lbl_sementes()
+
+    def _atualizar_lbl_sementes(self):
+        n = len(self._sementes_pixels)
+        if n == 0:
+            self._lbl_sementes_info.config(text="Sementes: nenhuma", fg=TEXT_DIM)
+        else:
+            coords = "  ".join(f"({sy},{sx})" for sy, sx in self._sementes_pixels)
+            self._lbl_sementes_info.config(
+                text=f"Sementes ({n}): {coords}", fg=ACCENT2)
 
     def _parse_sementes(self):
-        raw = self._sementes_entry.get().strip()
-        sementes = []
-        for token in raw.split():
-            partes = token.split(",")
-            if len(partes) != 2:
-                raise ValueError(f"Semente inválida: '{token}'. Use formato y,x")
-            sementes.append((int(partes[0]), int(partes[1])))
-        if not sementes:
-            raise ValueError("Informe pelo menos uma semente.")
-        return sementes
+        """Retorna lista de sementes do canvas. Fallback para o campo de texto legado."""
+        return list(self._sementes_pixels)
 
     def _run_regioes(self):
         if not self._check(): return
+        if not self._sementes_pixels:
+            messagebox.showwarning("Aviso", "Clique na imagem para definir pelo menos uma semente.")
+            return
         try:
-            sementes = self._parse_sementes()
-            T = float(self._T_reg.get())
+            T   = float(self._scale_reg.get())
             h, w = self._img.shape[:2]
-            for sy, sx in sementes:
+            for sy, sx in self._sementes_pixels:
                 if not (0 <= sy < h and 0 <= sx < w):
-                    raise ValueError(
-                        f"Semente ({sy},{sx}) fora dos limites da imagem ({h}×{w}).")
-            res = self._seg.region_growing(self._img, sementes, T)
-            self._two_cards(self._frm_regioes, self._img, res, "Regiões pseudocoloridas")
+                    raise ValueError(f"Semente ({sy},{sx}) fora dos limites ({h}×{w}).")
+            res = self._seg.region_growing(self._img, self._sementes_pixels, T)
+            self._last_result = res
+            # Exibe no card da direita
+            show_array_in_label(res, self._lbl_reg_res, self._lbl_reg_info,
+                                 self._CANVAS_W, self._CANVAS_H)
         except Exception as e:
             messagebox.showerror("Erro", str(e))
 
