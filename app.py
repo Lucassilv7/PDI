@@ -42,10 +42,15 @@ FONT_HEADER = ("Courier New", 11, "bold")
 # ─────────────────────────────────────────────
 
 def array_to_photoimage(arr: np.ndarray, max_w=380, max_h=300) -> ImageTk.PhotoImage:
-    """Converte ndarray para PhotoImage, redimensionando para caber."""
+    """Converte ndarray para PhotoImage, redimensionando para caber (só reduz, nunca aumenta)."""
     img = Image.fromarray(arr.astype(np.uint8))
     img.thumbnail((max_w, max_h), Image.LANCZOS)
     return ImageTk.PhotoImage(img)
+
+
+def array_to_photoimage_exact(arr: np.ndarray) -> ImageTk.PhotoImage:
+    """Converte ndarray para PhotoImage SEM redimensionar — tamanho real."""
+    return ImageTk.PhotoImage(Image.fromarray(arr.astype(np.uint8)))
 
 
 def make_label(parent, text, fg=TEXT_SEC, font=FONT_LABEL, **kw):
@@ -119,6 +124,92 @@ def show_array_in_label(arr: np.ndarray, lbl_img: tk.Label,
     h, w = arr.shape[:2]
     ch = arr.shape[2] if arr.ndim == 3 else 1
     lbl_info.config(text=f"{w}×{h} px | {ch}ch | dtype={arr.dtype}")
+
+
+
+def show_result_dynamic(arr, lbl_img, lbl_info, max_w=380, max_h=300, title="Resultado"):
+    """
+    Exibe miniatura inline. Se a imagem for maior que max_w x max_h,
+    abre automaticamente uma janela Toplevel scrollavel em tamanho real.
+    """
+    h, w = arr.shape[:2]
+    ch = arr.shape[2] if arr.ndim == 3 else 1
+    info_txt = f"{w}\u00d7{h} px | {ch}ch | dtype={arr.dtype}"
+
+    ph_thumb = array_to_photoimage(arr, max_w, max_h)
+    lbl_img.config(image=ph_thumb)
+    lbl_img.image = ph_thumb
+
+    if w > max_w or h > max_h:
+        lbl_info.config(text=info_txt + "  \u2b06 janela aberta", fg=ACCENT2)
+        _open_result_window(arr, title)
+    else:
+        lbl_info.config(text=info_txt, fg=TEXT_DIM)
+
+
+def array_to_photoimage_exact(arr):
+    """Converte ndarray para PhotoImage SEM redimensionar."""
+    return ImageTk.PhotoImage(Image.fromarray(arr.astype(np.uint8)))
+
+
+def _open_result_window(arr, title="Resultado"):
+    """Abre Toplevel scrollavel com a imagem em tamanho real. Suporta pan com mouse."""
+    win = tk.Toplevel()
+    win.title(f"PDI Lab \u2014 {title}")
+    win.configure(bg=BG_DARK)
+
+    h, w = arr.shape[:2]
+    ch = arr.shape[2] if arr.ndim == 3 else 1
+
+    hdr = tk.Frame(win, bg=BG_PANEL, pady=6)
+    hdr.pack(fill="x")
+    tk.Label(hdr, text=f"  {title}", fg=ACCENT, bg=BG_PANEL,
+             font=FONT_HEADER).pack(side="left")
+    tk.Label(hdr, text=f"{w}\u00d7{h} px  |  {ch} canal(is)",
+             fg=TEXT_SEC, bg=BG_PANEL, font=FONT_MONO).pack(side="left", padx=16)
+
+    screen_w = win.winfo_screenwidth()
+    screen_h = win.winfo_screenheight()
+    win_w = min(w + 30, int(screen_w * 0.9))
+    win_h = min(h + 100, int(screen_h * 0.9))
+    win.geometry(f"{win_w}x{win_h}")
+
+    frm = tk.Frame(win, bg=BG_DARK)
+    frm.pack(fill="both", expand=True)
+
+    canvas = tk.Canvas(frm, bg=BG_DARK, bd=0, highlightthickness=0)
+    hsb = tk.Scrollbar(frm, orient="horizontal", command=canvas.xview)
+    vsb = tk.Scrollbar(frm, orient="vertical",   command=canvas.yview)
+    canvas.configure(xscrollcommand=hsb.set, yscrollcommand=vsb.set)
+    vsb.pack(side="right", fill="y")
+    hsb.pack(side="bottom", fill="x")
+    canvas.pack(side="left", fill="both", expand=True)
+
+    ph = array_to_photoimage_exact(arr)
+    canvas.create_image(0, 0, anchor="nw", image=ph)
+    canvas.image = ph
+    canvas.configure(scrollregion=(0, 0, w, h))
+
+    canvas.bind("<ButtonPress-1>", lambda e: canvas.scan_mark(e.x, e.y))
+    canvas.bind("<B1-Motion>",     lambda e: canvas.scan_dragto(e.x, e.y, gain=1))
+    canvas.bind("<MouseWheel>",
+        lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+    canvas.bind("<Shift-MouseWheel>",
+        lambda e: canvas.xview_scroll(-1 * (e.delta // 120), "units"))
+
+    btn_frm = tk.Frame(win, bg=BG_PANEL, pady=4)
+    btn_frm.pack(fill="x")
+
+    def _save():
+        path = filedialog.asksaveasfilename(
+            parent=win, defaultextension=".png",
+            filetypes=[("PNG","*.png"),("JPEG","*.jpg"),("BMP","*.bmp")])
+        if path:
+            Image.fromarray(arr.astype(np.uint8)).save(path)
+            messagebox.showinfo("Salvo", f"Imagem salva em:\n{path}", parent=win)
+
+    make_button(btn_frm, "\U0001f4be  Salvar imagem", _save, color=ACCENT2).pack(side="left", padx=12)
+    make_button(btn_frm, "\u2715  Fechar", win.destroy, color=ACCENT3).pack(side="left", padx=4)
 
 
 # ─────────────────────────────────────────────
@@ -449,7 +540,7 @@ class PageC2(BasePage):
         try:
             result = C2.composicao_transformacoes(self._img, [{"operacao": op, "params": params}])
             self._result_arr = result
-            show_array_in_label(result, self._lbl_res, self._info_res)
+            show_result_dynamic(result, self._lbl_res, self._info_res, title=f"Resultado — {op}")
         except Exception as e:
             messagebox.showerror("Erro", str(e))
 
@@ -461,7 +552,7 @@ class PageC2(BasePage):
             op    = f"zoom_in_{tipo}"
             result = C2.composicao_transformacoes(self._img, [{"operacao": op, "params": {"fator": fator}}])
             self._result_arr = result
-            show_array_in_label(result, self._lbl_res, self._info_res)
+            show_result_dynamic(result, self._lbl_res, self._info_res, title=f"Zoom IN ×{fator}")
         except Exception as e:
             messagebox.showerror("Erro", str(e))
 
@@ -473,7 +564,7 @@ class PageC2(BasePage):
             op    = f"zoom_out_{tipo}"
             result = C2.composicao_transformacoes(self._img, [{"operacao": op, "params": {"fator": fator}}])
             self._result_arr = result
-            show_array_in_label(result, self._lbl_res, self._info_res)
+            show_result_dynamic(result, self._lbl_res, self._info_res, title=f"Zoom OUT ÷{fator}")
         except Exception as e:
             messagebox.showerror("Erro", str(e))
 
@@ -512,7 +603,7 @@ class PageC2(BasePage):
         try:
             result = C2.composicao_transformacoes(self._img, self._compose_steps)
             self._result_arr = result
-            show_array_in_label(result, self._lbl_res, self._info_res)
+            show_result_dynamic(result, self._lbl_res, self._info_res, title="Resultado — Composição")
         except Exception as e:
             messagebox.showerror("Erro", str(e))
 
@@ -1274,6 +1365,421 @@ class AbaFiltragem(BasePage):
 
 
 # ─────────────────────────────────────────────
+#  PÁGINA DE SEGMENTAÇÃO
+# ─────────────────────────────────────────────
+
+class AbaSegmentacao(BasePage):
+    """Página de Segmentação — usa impl/unid2/segmentation.py"""
+
+    def __init__(self, parent, **kw):
+        super().__init__(parent, **kw)
+        from impl.unid2 import segmentation as seg
+        self._seg = seg
+        self._img = None
+        self._last_result = None
+        inner = self.scrollable()
+        self._build(inner)
+
+    # ── Layout ───────────────────────────────
+    def _build(self, p):
+        pad = dict(padx=20, pady=4, anchor="w")
+        section_title(p, "Segmentação de Imagens")
+
+        self._sel = ImageSelector(p, "Imagem", on_load=self._on_img)
+        self._sel.pack(**pad, fill="x")
+
+        self._build_pontos(p, pad)
+        self._build_retas(p, pad)
+        self._build_bordas(p, pad)
+        self._build_limiar(p, pad)
+        self._build_regioes(p, pad)
+
+        tk.Frame(p, bg=BORDER, height=1).pack(fill="x", padx=20, pady=10)
+        make_button(p, "💾  Salvar último resultado",
+                    self._save, color=TEXT_SEC).pack(padx=20, anchor="w", pady=(0, 16))
+
+    def _on_img(self, arr, _path=None):
+        self._img = arr
+        # Atualiza o canvas clicável de sementes sempre que uma nova imagem é carregada
+        if hasattr(self, "_canvas_reg"):
+            self._sementes_pixels.clear()
+            self._render_canvas_img()
+            self._atualizar_lbl_sementes()
+
+    def _check(self):
+        if self._img is None:
+            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
+            return False
+        return True
+
+    # ── Helpers visuais ───────────────────────
+    def _show_row(self, parent, pairs, max_w=300, max_h=240):
+        """Limpa parent e exibe uma linha de image_cards com os arrays."""
+        for w in parent.winfo_children():
+            w.destroy()
+        for col, (arr, title) in enumerate(pairs):
+            frm, lbl, info = image_card(parent, title)
+            frm.grid(row=0, column=col, padx=5, pady=4, sticky="n")
+            show_array_in_label(arr, lbl, info, max_w, max_h)
+
+    def _two_cards(self, parent, orig, result, title_res):
+        """Exibe par original + resultado."""
+        self._show_row(parent, [(orig, "Original"), (result, title_res)])
+        self._last_result = result
+
+    # ─────────────────────────────────────────
+    #  1 — Detecção de Pontos
+    # ─────────────────────────────────────────
+    def _build_pontos(self, p, pad):
+        section_title(p, "1 — Detecção de Pontos")
+
+        ctrl = tk.Frame(p, bg=BG_PANEL); ctrl.pack(**pad)
+        self._scale_ponto = tk.Scale(
+            ctrl, from_=0, to=255, orient="horizontal", label="T (limiar)",
+            bg=BG_PANEL, fg="white", highlightthickness=0, length=260,
+            command=self._on_ponto_slider
+        )
+        self._scale_ponto.set(50)
+        self._scale_ponto.pack(side="left")
+
+        self._frm_pontos = tk.Frame(p, bg=BG_PANEL); self._frm_pontos.pack(padx=20, pady=4)
+
+    def _on_ponto_slider(self, _value=None):
+        """Atualiza detecção de pontos em tempo real conforme o slider move."""
+        if self._img is None:
+            return
+        try:
+            T = self._scale_ponto.get()
+            res = self._seg.points_detection(self._img, T)
+            self._two_cards(self._frm_pontos, self._img, res,
+                            f"Pontos detectados  (T={T})")
+        except Exception:
+            pass
+
+    def _run_pontos(self):
+        self._on_ponto_slider()
+
+    # ─────────────────────────────────────────
+    #  2 — Detecção de Retas
+    # ─────────────────────────────────────────
+    def _build_retas(self, p, pad):
+        section_title(p, "2 — Detecção de Retas")
+        frm = tk.Frame(p, bg=BG_PANEL); frm.pack(**pad)
+        self._reta_dir = make_combobox(frm,
+            ["horizontal", "vertical", "45graus", "135graus"], width=14)
+        self._reta_dir.grid(row=0, column=0, padx=(0, 10))
+        make_button(frm, "Detectar", self._run_retas).grid(row=0, column=1)
+
+        self._frm_retas = tk.Frame(p, bg=BG_PANEL); self._frm_retas.pack(padx=20, pady=4)
+
+    def _run_retas(self):
+        if not self._check(): return
+        try:
+            res = self._seg.lines_detection(self._img, self._reta_dir.get())
+            self._two_cards(self._frm_retas, self._img, res,
+                            f"Retas — {self._reta_dir.get()}")
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    # ─────────────────────────────────────────
+    #  3 — Detecção de Bordas
+    # ─────────────────────────────────────────
+    def _build_bordas(self, p, pad):
+        section_title(p, "3 — Detecção de Bordas")
+        frm = tk.Frame(p, bg=BG_PANEL); frm.pack(**pad)
+        self._borda_met = make_combobox(frm, [
+            "roberts", "roberts_cruzado",
+            "prewitt", "sobel",
+            "kirsch", "robinson",
+            "frei_chen",
+            "laplaciano_h1", "laplaciano_h2"
+        ], width=18)
+        self._borda_met.grid(row=0, column=0, padx=(0, 10))
+        make_button(frm, "Calcular", self._run_bordas).grid(row=0, column=1)
+
+        self._frm_bordas = tk.Frame(p, bg=BG_PANEL)
+        self._frm_bordas.pack(padx=20, pady=4)
+
+    def _run_bordas(self):
+        if not self._check(): return
+        try:
+            met = self._borda_met.get()
+            resultado = self._seg.edges_detection(self._img, met)
+            # Monta pares: original + cada saída (gx, gy, magnitude)
+            pares = [("Original", self._img)] + [
+                (k.upper(), v) for k, v in resultado.items()
+            ]
+            self._show_row(self._frm_bordas, [(arr, t) for t, arr in pares])
+            # Salva magnitude como último resultado
+            self._last_result = resultado.get("magnitude",
+                                 list(resultado.values())[-1])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    # ─────────────────────────────────────────
+    #  4 — Limiarização
+    # ─────────────────────────────────────────
+    def _build_limiar(self, p, pad):
+        section_title(p, "4 — Limiarização")
+
+        # Global
+        frm_g = tk.Frame(p, bg=BG_PANEL); frm_g.pack(**pad)
+        tk.Label(frm_g, text="Global (iterativa):", fg=TEXT_SEC,
+                 bg=BG_PANEL, font=FONT_LABEL).grid(row=0, column=0, padx=(0, 8))
+        make_button(frm_g, "Aplicar", self._run_global).grid(row=0, column=1)
+        self._lbl_T_global = tk.Label(frm_g, text="", fg=ACCENT2,
+                                       bg=BG_PANEL, font=FONT_MONO)
+        self._lbl_T_global.grid(row=0, column=2, padx=8)
+
+        # Local
+        frm_l = tk.Frame(p, bg=BG_PANEL); frm_l.pack(**pad)
+        tk.Label(frm_l, text="Local — modo:", fg=TEXT_SEC,
+                 bg=BG_PANEL, font=FONT_LABEL).grid(row=0, column=0)
+        self._local_modo = make_combobox(frm_l,
+            ["media", "maximo", "minimo", "niblack"], width=10)
+        self._local_modo.grid(row=0, column=1, padx=6)
+        tk.Label(frm_l, text="n:", fg=TEXT_SEC, bg=BG_PANEL,
+                 font=FONT_LABEL).grid(row=0, column=2)
+        self._local_n = make_entry(frm_l, width=4); self._local_n.insert(0, "15")
+        self._local_n.grid(row=0, column=3, padx=4)
+        tk.Label(frm_l, text="k:", fg=TEXT_SEC, bg=BG_PANEL,
+                 font=FONT_LABEL).grid(row=0, column=4)
+        self._local_k = make_entry(frm_l, width=5); self._local_k.insert(0, "-0.2")
+        self._local_k.grid(row=0, column=5, padx=4)
+        make_button(frm_l, "Aplicar", self._run_local).grid(row=0, column=6, padx=8)
+
+        self._frm_limiar = tk.Frame(p, bg=BG_PANEL)
+        self._frm_limiar.pack(padx=20, pady=4)
+
+    def _run_global(self):
+        if not self._check(): return
+        try:
+            res, T = self._seg.global_limiarization(self._img)
+            self._lbl_T_global.config(text=f"T = {T}")
+            self._two_cards(self._frm_limiar, self._img, res, "Global limiarizada")
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_local(self):
+        if not self._check(): return
+        try:
+            n    = int(self._local_n.get())
+            k    = float(self._local_k.get())
+            modo = self._local_modo.get()
+            res  = self._seg.local_limiarization(self._img, n, modo, k)
+            self._two_cards(self._frm_limiar, self._img, res,
+                            f"Local — {modo}  n={n}  k={k}")
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    # ─────────────────────────────────────────
+    #  5 — Segmentação por Regiões
+    # ─────────────────────────────────────────
+    def _build_regioes(self, p, pad):
+        section_title(p, "5 — Segmentação por Regiões")
+
+        # ── Crescimento de Região ──
+        tk.Label(p, text="Crescimento de Região", fg=ACCENT2,
+                 bg=BG_PANEL, font=FONT_LABEL).pack(**pad)
+
+        # Controles: T + botões
+        frm_ctrl = tk.Frame(p, bg=BG_PANEL); frm_ctrl.pack(**pad)
+
+        tk.Label(frm_ctrl, text="T (limiar):", fg=TEXT_SEC,
+                 bg=BG_PANEL, font=FONT_LABEL).grid(row=0, column=0, padx=(0, 4))
+        self._scale_reg = tk.Scale(
+            frm_ctrl, from_=0, to=100, orient="horizontal",
+            bg=BG_PANEL, fg="white", highlightthickness=0, length=200,
+        )
+        self._scale_reg.set(20)
+        self._scale_reg.grid(row=0, column=1, padx=(0, 12))
+
+        make_button(frm_ctrl, "Limpar sementes", self._limpar_sementes,
+                    color=ACCENT3).grid(row=0, column=2, padx=4)
+        make_button(frm_ctrl, "▶ Calcular regiões", self._run_regioes,
+                    color=ACCENT2).grid(row=0, column=3, padx=4)
+
+        # Dica de uso
+        tk.Label(p, text="  Clique na imagem para adicionar sementes. Clique com botão direito para remover a última.",
+                 fg=TEXT_DIM, bg=BG_PANEL, font=FONT_MONO).pack(anchor="w", padx=20, pady=(0, 4))
+
+        # Frame com canvas clicavel (esquerda) + resultado (direita)
+        frm_painel = tk.Frame(p, bg=BG_PANEL); frm_painel.pack(padx=20, pady=4, anchor="w")
+
+        # -- Lado esquerdo: canvas da imagem --
+        frm_canvas = tk.Frame(frm_painel, bg=BG_CARD,
+                               highlightthickness=1, highlightbackground=BORDER)
+        frm_canvas.grid(row=0, column=0, padx=(0, 10), sticky="n")
+
+        tk.Label(frm_canvas, text="Clique para adicionar sementes",
+                 fg=TEXT_SEC, bg=BG_CARD, font=FONT_MONO).pack(pady=(6, 2))
+
+        self._CANVAS_W = 320
+        self._CANVAS_H = 260
+        self._canvas_reg = tk.Canvas(
+            frm_canvas, width=self._CANVAS_W, height=self._CANVAS_H,
+            bg=BG_DARK, bd=0, highlightthickness=0, cursor="crosshair"
+        )
+        self._canvas_reg.pack(padx=6, pady=4)
+
+        self._lbl_sementes_info = tk.Label(
+            frm_canvas, text="Sementes: nenhuma", fg=ACCENT2,
+            bg=BG_CARD, font=FONT_MONO
+        )
+        self._lbl_sementes_info.pack(pady=(0, 6))
+
+        # -- Lado direito: resultado --
+        frm_res = tk.Frame(frm_painel, bg=BG_CARD,
+                            highlightthickness=1, highlightbackground=BORDER)
+        frm_res.grid(row=0, column=1, sticky="n")
+
+        tk.Label(frm_res, text="Resultado", fg=TEXT_SEC,
+                 bg=BG_CARD, font=FONT_MONO).pack(pady=(6, 2))
+        self._lbl_reg_res = tk.Label(frm_res, bg=BG_CARD,
+                                      width=self._CANVAS_W, height=self._CANVAS_H)
+        self._lbl_reg_res.pack(padx=6, pady=4)
+        self._lbl_reg_info = tk.Label(frm_res, text="—", fg=TEXT_DIM,
+                                       bg=BG_CARD, font=FONT_MONO)
+        self._lbl_reg_info.pack(pady=(0, 6))
+
+        # Estado interno do canvas clicavel
+        self._sementes_pixels  = []   # coordenadas na imagem original
+        self._canvas_img_scale = 1.0  # fator de escala imagem→canvas
+        self._canvas_ph        = None # referência PhotoImage no canvas
+
+        # Eventos de clique
+        self._canvas_reg.bind("<Button-1>",   self._canvas_click)
+        self._canvas_reg.bind("<Button-3>",   self._canvas_remove_last)
+
+        # ── Watershed ──
+        tk.Label(p, text="Watershed", fg=ACCENT2,
+                 bg=BG_PANEL, font=FONT_LABEL).pack(**{**pad, "pady": (14, 4)})
+        make_button(p, "▶ Executar Watershed", self._run_watershed,
+                    color=ACCENT3).pack(padx=20, anchor="w")
+
+        self._frm_watershed = tk.Frame(p, bg=BG_PANEL)
+        self._frm_watershed.pack(padx=20, pady=4)
+
+    # ── Canvas clicavel helpers ──────────────────────────────
+    def _render_canvas_img(self):
+        """
+        Desenha a imagem atual no canvas de sementes, escalada para caber.
+        Redesenha os marcadores de semente por cima.
+        """
+        if self._img is None:
+            return
+        from PIL import Image as PILImage
+        img_h, img_w = self._img.shape[:2]
+        scale = min(self._CANVAS_W / img_w, self._CANVAS_H / img_h)
+        self._canvas_img_scale = scale
+        disp_w = int(img_w * scale)
+        disp_h = int(img_h * scale)
+
+        pil = PILImage.fromarray(self._img.astype(np.uint8))
+        pil = pil.resize((disp_w, disp_h), PILImage.LANCZOS)
+        self._canvas_ph = ImageTk.PhotoImage(pil)
+
+        self._canvas_reg.config(width=disp_w, height=disp_h)
+        self._canvas_reg.delete("all")
+        self._canvas_reg.create_image(0, 0, anchor="nw", image=self._canvas_ph)
+        self._canvas_img_offset = ((self._CANVAS_W - disp_w) // 2,
+                                    (self._CANVAS_H - disp_h) // 2)
+        # Redesenha marcadores
+        for (sy, sx) in self._sementes_pixels:
+            cx = int(sx * scale)
+            cy = int(sy * scale)
+            r = 5
+            self._canvas_reg.create_oval(cx-r, cy-r, cx+r, cy+r,
+                                          outline=ACCENT2, fill="", width=2)
+            self._canvas_reg.create_oval(cx-1, cy-1, cx+1, cy+1,
+                                          outline=ACCENT2, fill=ACCENT2)
+
+    def _canvas_click(self, event):
+        """Registra semente na coordenada clicada e atualiza display."""
+        if self._img is None:
+            messagebox.showwarning("Aviso", "Carregue uma imagem primeiro.")
+            return
+        scale = self._canvas_img_scale
+        img_h, img_w = self._img.shape[:2]
+        sx = int(event.x / scale)
+        sy = int(event.y / scale)
+        sx = max(0, min(sx, img_w - 1))
+        sy = max(0, min(sy, img_h - 1))
+        self._sementes_pixels.append((sy, sx))
+        self._render_canvas_img()
+        self._atualizar_lbl_sementes()
+
+    def _canvas_remove_last(self, _event=None):
+        """Remove a última semente com botão direito."""
+        if self._sementes_pixels:
+            self._sementes_pixels.pop()
+            self._render_canvas_img()
+            self._atualizar_lbl_sementes()
+
+    def _limpar_sementes(self):
+        self._sementes_pixels.clear()
+        self._render_canvas_img()
+        self._atualizar_lbl_sementes()
+
+    def _atualizar_lbl_sementes(self):
+        n = len(self._sementes_pixels)
+        if n == 0:
+            self._lbl_sementes_info.config(text="Sementes: nenhuma", fg=TEXT_DIM)
+        else:
+            coords = "  ".join(f"({sy},{sx})" for sy, sx in self._sementes_pixels)
+            self._lbl_sementes_info.config(
+                text=f"Sementes ({n}): {coords}", fg=ACCENT2)
+
+    def _parse_sementes(self):
+        """Retorna lista de sementes do canvas. Fallback para o campo de texto legado."""
+        return list(self._sementes_pixels)
+
+    def _run_regioes(self):
+        if not self._check(): return
+        if not self._sementes_pixels:
+            messagebox.showwarning("Aviso", "Clique na imagem para definir pelo menos uma semente.")
+            return
+        try:
+            T   = float(self._scale_reg.get())
+            h, w = self._img.shape[:2]
+            for sy, sx in self._sementes_pixels:
+                if not (0 <= sy < h and 0 <= sx < w):
+                    raise ValueError(f"Semente ({sy},{sx}) fora dos limites ({h}×{w}).")
+            res = self._seg.region_growing(self._img, self._sementes_pixels, T)
+            self._last_result = res
+            # Exibe no card da direita
+            show_array_in_label(res, self._lbl_reg_res, self._lbl_reg_info,
+                                 self._CANVAS_W, self._CANVAS_H)
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _run_watershed(self):
+        if not self._check(): return
+        try:
+            from impl.unid2.segmentation import watershed_with_markers
+            img_linhas, pseudo = watershed_with_markers(self._img)
+            self._last_result = img_linhas
+            self._show_row(self._frm_watershed, [
+                (self._img,   "Original"),
+                (img_linhas,  "Linhas de contenção"),
+                (pseudo,      "Regiões pseudocoloridas"),
+            ])
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _save(self):
+        if self._last_result is None:
+            messagebox.showinfo("Info", "Execute alguma operação antes de salvar.")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg"), ("BMP", "*.bmp")])
+        if path:
+            Image.fromarray(self._last_result.astype(np.uint8)).save(path)
+            messagebox.showinfo("Salvo", f"Imagem salva em:\n{path}")
+
+
+# ─────────────────────────────────────────────
 #  JANELA PRINCIPAL
 # ─────────────────────────────────────────────
 
@@ -1314,7 +1820,8 @@ class App(tk.Tk):
             "C2": PageC2(self._content),
             "C3": PageC3(self._content),
             "Realce": AbaRealce(self._content),
-            "Filtragem": AbaFiltragem(self._content, self)
+            "Filtragem": AbaFiltragem(self._content, self),
+            "Segmentacao": AbaSegmentacao(self._content),
         }
         for page in self._pages.values():
             page.place(relwidth=1, relheight=1)
@@ -1328,7 +1835,8 @@ class App(tk.Tk):
             ("C2", "Transformações\nGeométricas", ACCENT2),
             ("C3", "Espaços de Cor\n& Pseudocor", ACCENT3),
             ("Realce", "Realce", ACCENT4),
-            ("Filtragem", "Filtragem\nEspacial", ACCENT5)
+            ("Filtragem", "Filtragem\nEspacial", ACCENT5),
+            ("Segmentacao", "Segmentação", "#e8c468"),
         ]
 
         self._menu_btns = {}
