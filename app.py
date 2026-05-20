@@ -12,6 +12,8 @@ import os
 
 from impl import C1, C2, C3
 from impl.unid2 import realce, filtering
+from impl.unid2.segmentation import watershed
+
 
 # ─────────────────────────────────────────────
 #  PALETA E FONTES
@@ -1756,13 +1758,11 @@ class AbaSegmentacao(BasePage):
     def _run_watershed(self):
         if not self._check(): return
         try:
-            from impl.unid2.segmentation import watershed_with_markers
-            img_linhas, pseudo = watershed_with_markers(self._img)
+            img_linhas = watershed(self._img)
             self._last_result = img_linhas
             self._show_row(self._frm_watershed, [
                 (self._img,   "Original"),
                 (img_linhas,  "Linhas de contenção"),
-                (pseudo,      "Regiões pseudocoloridas"),
             ])
         except Exception as e:
             messagebox.showerror("Erro", str(e))
