@@ -1,7 +1,6 @@
 import numpy as np
 from collections import deque
 import heapq
-from scipy.ndimage import minimum_filter, label as nd_label
 
 
 # ─────────────────────────────────────────────
@@ -401,20 +400,20 @@ def _find_local_minima(gradient: np.ndarray, min_distance: int = 3) -> np.ndarra
     """
     Encontra mínimos locais no mapa de gradiente usando uma janela
     de tamanho (2*min_distance+1)^2.
- 
+
     Retorna máscara booleana onde True = mínimo local confirmado.
- 
+
     Estratégia:
       - Para cada pixel, verifica se é o menor valor em sua vizinhança.
       - Depois aplica supressão de não-máximos para manter apenas um
         mínimo por cluster (evita centenas de mínimos vizinhos no mesmo vale).
     """
-
+    from scipy.ndimage import minimum_filter, label as nd_label
     # Mínimo local: pixel igual ao mínimo da sua janela
     footprint_size = 2 * min_distance + 1
     local_min = minimum_filter(gradient, size=footprint_size)
     minima_mask = (gradient == local_min)
- 
+
     # Supressão: dentro de cada grupo conectado de mínimos, mantém só o centróide
     labeled, num = nd_label(minima_mask)
     result = np.zeros_like(minima_mask, dtype=bool)
@@ -422,14 +421,14 @@ def _find_local_minima(gradient: np.ndarray, min_distance: int = 3) -> np.ndarra
         coords = np.argwhere(labeled == region_id)
         cy, cx = coords.mean(axis=0).astype(int)
         result[cy, cx] = True
- 
+
     return result
- 
- 
+
+
 def _watershed_core(img: np.ndarray):
     """
     Watershed por imersão (Vincent & Soille, 1991) com marcadores reais.
- 
+
     Pipeline:
       1. Suaviza a imagem (blur 5×5) para atenuar ruído antes do gradiente.
       2. Calcula gradiente Sobel como "relevo topográfico".
@@ -439,36 +438,37 @@ def _watershed_core(img: np.ndarray):
          gradiente (fila de prioridade). Apenas vizinhos de pixels já
          rotulados entram na fila — nunca pixels aleatórios.
       5. Pixel vizinho de dois rótulos distintos = linha de contenção.
- 
+
     A diferença crítica em relação à versão anterior:
       - Nunca cria novo rótulo durante a propagação, apenas nos marcadores.
       - Usa FIFO por nível de gradiente (não heap global com todos os pixels).
     """
- 
+    from scipy.ndimage import minimum_filter, label as nd_label
+
     gray = to_gray(img).astype(np.float64)
     h, w = gray.shape
- 
+
     # 1. Suavização
     kb = np.ones((5, 5), dtype=np.float64) / 25.0
     gray_s = _convolve2d(gray, kb)
- 
+
     # 2. Gradiente
     Gx = _convolve2d(gray_s, SOBEL_KERNEL_X)
     Gy = _convolve2d(gray_s, SOBEL_KERNEL_Y)
     gradient = np.sqrt(Gx**2 + Gy**2)
     g_max = gradient.max() + 1e-10
     grad_int = (gradient / g_max * 255).astype(np.int32)
- 
+
     # 3. Marcadores: mínimos locais em janela 9×9, um por grupo conexo
     win = max(3, min(15, h // 8, w // 8))  # adapta ao tamanho da imagem
     local_min_val = minimum_filter(grad_int, size=win)
     minima_mask = (grad_int == local_min_val)
     labeled_groups, n_groups = nd_label(minima_mask)
- 
+
     WSHED  = -1
     INQUEUE = -2
     labels = np.zeros((h, w), dtype=np.int32)
- 
+
     heap = []
     for gid in range(1, n_groups + 1):
         coords = np.argwhere(labeled_groups == gid)
@@ -477,16 +477,16 @@ def _watershed_core(img: np.ndarray):
         by, bx = best
         labels[by, bx] = gid
         heapq.heappush(heap, (int(grad_int[by, bx]), int(by), int(bx)))
- 
+
     # 4. Propagação BFS por prioridade — somente vizinhos de rotulados entram
     neighbors_4 = [(-1, 0), (1, 0), (0, -1), (0, 1)]
- 
+
     while heap:
         _, y, x = heapq.heappop(heap)
         cur_label = labels[y, x]
         if cur_label in (WSHED, INQUEUE):
             continue
- 
+
         for dy, dx in neighbors_4:
             ny, nx = y + dy, x + dx
             if not (0 <= ny < h and 0 <= nx < w):
@@ -499,10 +499,10 @@ def _watershed_core(img: np.ndarray):
             elif nb_label > 0 and nb_label != cur_label:
                 # Dois rótulos distintos se encontram: linha de contenção
                 labels[ny, nx] = WSHED
- 
+
     return labels, WSHED
- 
- 
+
+
 def watershed(img: np.ndarray) -> np.ndarray:
     """
     Watershed com marcadores baseados em mínimos locais do gradiente.
@@ -512,28 +512,3 @@ def watershed(img: np.ndarray) -> np.ndarray:
     result = img.copy()
     result[labels == WSHED] = [0, 0, 0]
     return result
- 
- 
-def watershed_with_markers(img: np.ndarray) -> tuple:
-    """
-    Retorna:
-      - imagem original com linhas de contenção em preto
-      - imagem pseudocolorida das regiões encontradas
-    """
-    labels, WSHED = _watershed_core(img)
-    h, w = img.shape[:2]
- 
-    # Linhas de contenção em preto
-    img_lines = img.copy()
-    img_lines[labels == WSHED] = [0, 0, 0]
- 
-    # Pseudocolorização das regiões
-    pseudocolor = np.zeros((h, w, 3), dtype=np.uint8)
-    unique = np.unique(labels)
-    unique = unique[unique > 0]  # exclui WSHED (-1) e não-rotulados (0)
-    for i, label in enumerate(unique):
-        color = _PALETA[i % len(_PALETA)]
-        pseudocolor[labels == label] = color
-    pseudocolor[labels == WSHED] = [0, 0, 0]
- 
-    return img_lines, pseudocolor
